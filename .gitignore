@@ -9,6 +9,15 @@ venv/
 .venv/
 ENV/
 
+# Generated local indexes, caches, and logs
+/finrag_tree/
+/cache/
+/.cache/
+/.pytest_cache/
+/.ruff_cache/
+/logs/
+*.log
+
 # Data & PDF files (users download locally)
 *.pdf
 data/*.pdf
@@ -20,6 +29,7 @@ chroma_db/
 .env
 .env.*
 !.env.example
+.streamlit/secrets.toml
 
 # IDE
 .vscode/

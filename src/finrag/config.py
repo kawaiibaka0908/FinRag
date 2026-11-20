@@ -8,8 +8,8 @@ from pathlib import Path
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
-    # Look for .env file in the same directory as this config file
-    env_path = Path(__file__).parent / '.env'
+    # Load the project-root .env used by both application entry points.
+    env_path = Path(__file__).resolve().parents[2] / '.env'
     load_dotenv(dotenv_path=env_path)
 except ImportError:
     warnings.warn(
