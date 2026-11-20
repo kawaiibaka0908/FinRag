@@ -1,22 +1,16 @@
-"""
-Vortex-India: Multi-Agent Financial & Geopolitical Intelligence Platform
-Streamlit Web Application for NSE & BSE Equities.
-"""
 import os
 import sys
 from pathlib import Path
 import streamlit as st
 import pandas as pd
 
-# Set page config
 st.set_page_config(
-    page_title="Vortex-India | Multi-Agent Financial AI",
+    page_title="FinRAG | Multi-Agent Financial AI",
     page_icon="🏛️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Add src to path
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir / "src"))
 
@@ -28,7 +22,6 @@ def get_orchestrator():
 
 orchestrator = get_orchestrator()
 
-# Custom Styling
 st.markdown("""
 <style>
     .main-title {
@@ -52,11 +45,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Header
-st.markdown('<div class="main-title">🏛️ Vortex-India: Multi-Agent Equity & Geopolitics AI</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Dual-Horizon Intelligence for NSE & BSE: Combining Live Financial News, Market Fundamentals, and Annual Report Disclosures</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🏛️ FinRAG: Multi-Agent Equity & Geopolitics AI</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Live Financial News + Market Fundamentals + Annual Report RAG for NSE & BSE Equities</div>', unsafe_allow_html=True)
 
-# Sidebar
 st.sidebar.header("🎯 Research Presets")
 preset_options = [
     "Select a pre-configured query...",
@@ -64,22 +55,31 @@ preset_options = [
     "🏦 Compare ICICI Bank with HDFC Bank and SBI on NIMs and asset quality",
     "⚡ How do recent events affect Reliance and Bharti Airtel?",
     "🏗️ Analyze Larsen & Toubro (LT) order book & infrastructure execution",
-    "📈 Evaluate Adani Enterprises exposure across energy and airports"
+    "📈 Evaluate Adani Enterprises exposure across energy and airports",
+    "🚀 Whats better sector right now - space or EV? Best company from each",
+    "💊 Compare pharma sector vs IT sector for investment",
+    "🔋 Best renewable energy stocks in India right now",
 ]
 
 selected_preset = st.sidebar.selectbox("Choose a scenario:", preset_options)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📌 Model Pipeline Architecture")
+st.sidebar.subheader("📌 Model Pipeline")
 st.sidebar.info("""
-- **LLM Engine:** Google Gemini (Flash / Pro)
-- **Agent Roles:** Defence, Banking, Conglomerates, News, Quant
-- **Data Feeds:** Live Reuters / Business Standard / Yahoo Finance
-- **Filings Ingested:** HAL, BDL, L&T, Reliance Power
+- **LLM:** Google Gemini (Flash)
+- **Agents:** Stock Agent, Sector Research Agent, News Agent, Quant Agent
+- **Data:** Live Google News / Yahoo Finance / NSE-BSE Fundamentals
+- **Filings:** HAL, BDL, L&T, Reliance Power Annual Reports
 - **Cost:** $0.00 (Free Tier API)
 """)
 
-# Main Input Section
+st.sidebar.markdown("---")
+st.sidebar.subheader("📊 Covered Sectors")
+st.sidebar.markdown("""
+Defence · Banking · IT · Pharma · Auto/EV · Energy · Power
+Infrastructure · Metals · Oil & Gas · FMCG · Telecom · Insurance
+""")
+
 default_query = ""
 if selected_preset and not selected_preset.startswith("Select"):
     default_query = selected_preset.split(" ", 1)[1]
@@ -93,27 +93,28 @@ user_query = st.text_area(
 run_button = st.button("🚀 Run Multi-Agent Analysis", type="primary", use_container_width=True)
 
 if run_button and user_query:
-    with st.spinner("🔄 Multi-Agent Pipeline Active: Fetching live breaking news, querying NSE/BSE fundamentals, and synthesizing research with Gemini..."):
+    with st.spinner("🔄 Multi-Agent Pipeline Active: Fetching live news, querying fundamentals, running sector research..."):
         result = orchestrator.run_comparative_analysis(user_query)
 
-    st.success("✅ Research Briefing Generated Successfully!")
+    st.success("✅ Research Briefing Generated!")
 
-    # 1. Valuation & Fundamentals Metrics Display
     fundamentals = result.get("fundamentals", [])
     if fundamentals:
         st.subheader("📊 Live Market Fundamentals (NSE/BSE)")
-        cols = st.columns(len(fundamentals))
-        for i, item in enumerate(fundamentals):
-            with cols[i]:
-                st.markdown(f"### {item['ticker']}")
-                st.caption(item['name'])
-                st.metric("Live Price", f"₹{item['price']:,.2f}" if isinstance(item['price'], (int, float)) else str(item['price']))
-                st.metric("P/E Ratio", f"{item['pe']:.2f}" if isinstance(item['pe'], (int, float)) else str(item['pe']))
-                st.metric("Market Cap", str(item['mcap']))
+        # show max 4 per row
+        for row_start in range(0, len(fundamentals), 4):
+            batch = fundamentals[row_start:row_start + 4]
+            cols = st.columns(len(batch))
+            for i, item in enumerate(batch):
+                with cols[i]:
+                    st.markdown(f"### {item['ticker']}")
+                    st.caption(item['name'])
+                    st.metric("Live Price", f"₹{item['price']:,.2f}" if isinstance(item['price'], (int, float)) else str(item['price']))
+                    st.metric("P/E Ratio", f"{item['pe']:.2f}" if isinstance(item['pe'], (int, float)) else str(item['pe']))
+                    st.metric("Market Cap", str(item['mcap']))
 
-    # 2. Comprehensive AI Research Report
     st.subheader("📑 Executive Research Dossier")
     st.markdown(result.get("answer", ""))
 
     st.markdown("---")
-    st.caption("⚡ Powered by Vortex-India Multi-Agent System | Open Source Indian Equity Intelligence")
+    st.caption("⚡ Powered by FinRAG Multi-Agent System | Open Source Indian Equity Intelligence")

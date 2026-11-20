@@ -2,25 +2,10 @@
 FinRAG: Financial Retrieval-Augmented Generation System
 Based on RAPTOR (Recursive Abstractive Processing for Tree-Organized Retrieval)
 """
-
-from .finrag import FinRAG
-from .config import FinRAGConfig
-from .scoring import EnsembleScorer, ScoringConfig, ScoringResult
-from .vectorstore import PathwayVectorStore, PathwayConfig
-from .observability import (
-    trace_query,
-    trace_document_parsing,
-    langfuse_context,
-    flush_langfuse
-)
-
-# Lazy import for evaluation (optional dependency)
-def get_evaluator():
-    """Get RAGASEvaluator (lazy import)."""
-    from .evaluation import RAGASEvaluator, EvaluationConfig
-    return RAGASEvaluator, EvaluationConfig
+import importlib
 
 __version__ = "1.0.0"
+
 __all__ = [
     "FinRAG",
     "FinRAGConfig",
@@ -35,3 +20,25 @@ __all__ = [
     "flush_langfuse",
     "get_evaluator"
 ]
+
+def __getattr__(name: str):
+    if name in ("FinRAG",):
+        mod = importlib.import_module(".finrag", __name__)
+        return getattr(mod, name)
+    elif name in ("FinRAGConfig",):
+        mod = importlib.import_module(".config", __name__)
+        return getattr(mod, name)
+    elif name in ("EnsembleScorer", "ScoringConfig", "ScoringResult"):
+        mod = importlib.import_module(".scoring", __name__)
+        return getattr(mod, name)
+    elif name in ("PathwayVectorStore", "PathwayConfig"):
+        mod = importlib.import_module(".vectorstore", __name__)
+        return getattr(mod, name)
+    elif name in ("trace_query", "trace_document_parsing", "langfuse_context", "flush_langfuse"):
+        mod = importlib.import_module(".observability", __name__)
+        return getattr(mod, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+def get_evaluator():
+    from .evaluation import RAGASEvaluator, EvaluationConfig
+    return RAGASEvaluator, EvaluationConfig

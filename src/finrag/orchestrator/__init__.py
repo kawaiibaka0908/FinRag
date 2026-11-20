@@ -1,19 +1,25 @@
 """
-FinRAG Orchestrator - LLM-driven tool selection and execution.
-
-This module provides an intelligent agent layer that:
-1. Analyzes user queries using an LLM
-2. Decides which tool(s) to call and with what parameters
-3. Executes tools and synthesizes responses
+FinRAG Orchestrator package.
 """
-
-from .orchestrator import FinRAGOrchestrator, OrchestratorConfig
-from .tools import ToolRegistry, Tool, ToolResult
+import importlib
 
 __all__ = [
     "FinRAGOrchestrator",
     "OrchestratorConfig", 
     "ToolRegistry",
     "Tool",
-    "ToolResult"
+    "ToolResult",
+    "IndiaMultiAgentOrchestrator"
 ]
+
+def __getattr__(name: str):
+    if name in ("FinRAGOrchestrator", "OrchestratorConfig"):
+        mod = importlib.import_module(".orchestrator", __name__)
+        return getattr(mod, name)
+    elif name in ("ToolRegistry", "Tool", "ToolResult"):
+        mod = importlib.import_module(".tools", __name__)
+        return getattr(mod, name)
+    elif name in ("IndiaMultiAgentOrchestrator",):
+        mod = importlib.import_module(".india_orchestrator", __name__)
+        return getattr(mod, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
