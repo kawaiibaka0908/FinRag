@@ -264,7 +264,3 @@ Company-name resolution uses local aliases; an explicit `.NS` or `.BO` ticker ca
 - Gemini synthesis can be unavailable or imperfect. Source labels and confidence handling reduce unsupported attribution but do not guarantee correctness.
 - Confidence is a heuristic evidence-coverage indicator, not a statistically calibrated probability.
 - Generated analysis is informational, not personalized financial advice or a recommendation to buy or sell a security.
-
-## Screenshots and demonstration
-
-No application screenshots are currently included in the repository. Add genuine screenshots here after capturing them from a running Streamlit session; no illustrative screenshots are presented as application output.
