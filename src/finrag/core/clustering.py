@@ -6,7 +6,6 @@ from typing import List, Dict, Any, Optional
 import numpy as np
 from sklearn.cluster import DBSCAN, KMeans
 from sklearn.mixture import GaussianMixture
-import umap
 from dataclasses import dataclass
 
 
@@ -57,6 +56,7 @@ class RAPTORClustering:
         if n_neighbors is None:
             n_neighbors = int((len(embeddings) - 1) ** 0.5)
         
+        import umap
         reducer = umap.UMAP(
             n_neighbors=n_neighbors,
             n_components=min(dim, len(embeddings) - 2),
@@ -77,6 +77,7 @@ class RAPTORClustering:
         if dim is None:
             dim = self.reduction_dimension
         
+        import umap
         reducer = umap.UMAP(
             n_neighbors=num_neighbors,
             n_components=min(dim, len(embeddings) - 2),

@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from ..core.base_models import BaseSummarizationModel, BaseQAModel
@@ -135,7 +136,6 @@ class GeminiQAModel(BaseQAModel):
         except Exception as e:
             logger.error(f"Failed to start Gemini client: {e}")
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=6))
     def answer_question(self, context, question, query_type="stock"):
         if not context or len(context.strip()) < 20:
             return {
@@ -145,27 +145,62 @@ class GeminiQAModel(BaseQAModel):
             }
 
         template = SECTOR_PROMPT if query_type == "sector" else STOCK_PROMPT
-        prompt = template.format(context=context[:30000], question=question)
+        source_guidance = (
+            "Use only the company-specific annual report excerpts labeled in the context. "
+            "Treat those excerpts as historical, cite their source document and financial year, "
+            "and do not use them for current prices or current market conditions. If no report "
+            "excerpt is present for a company, do not imply that its annual report was reviewed. "
+            "Attribute current market metrics and news to their labeled data sources. Never name "
+            "a publisher, report, data provider or other source that is not explicitly present in "
+            "the supplied context.\n\n"
+        )
+        prompt = source_guidance + template.format(context=context[:30000], question=question)
 
         if not self.client:
             return {
-                "answer": f"Analysis based on context:\n\n{context[:500]}...",
-                "confidence": 0.5,
-                "sources": ["Local Context"]
+                "answer": "Gemini synthesis is unavailable; no investment recommendation was generated.",
+                "confidence": 0.0,
+                "sources": []
             }
 
-        for m in [self.model_name] + [x for x in MODELS_TO_TRY if x != self.model_name]:
+        from google.genai import types
+
+        request_config = types.GenerateContentConfig(
+            http_options=types.HttpOptions(
+                timeout=20_000,
+                retry_options=types.HttpRetryOptions(attempts=1),
+            )
+        )
+        transient_statuses = {408, 429, 500, 502, 503, 504}
+        for attempt in range(2):
             try:
-                res = self.client.models.generate_content(model=m, contents=prompt)
+                res = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=request_config,
+                )
                 if res and res.text:
                     return {
                         "answer": res.text.strip(),
                         "confidence": 0.95,
-                        "sources": ["Corporate Filings RAG", "Live NSE/BSE Market Data", "Reuters & Financial News Feeds"]
+                        # The caller constructs source attribution from evidence
+                        # actually included in this query's context.
+                        "sources": []
                     }
-            except Exception as e:
-                logger.warning(f"QA model {m} failed: {e}")
-                continue
+                logger.warning("Gemini returned an empty response for %s", self.model_name)
+                break
+            except Exception as exc:
+                status = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+                try:
+                    status = int(status)
+                except (TypeError, ValueError):
+                    status = None
+                if attempt == 0 and status in transient_statuses:
+                    logger.warning("Gemini returned temporary HTTP %s; retrying once", status)
+                    time.sleep(1)
+                    continue
+                logger.warning("Gemini synthesis failed (HTTP %s): %s", status or "unknown", exc)
+                break
 
         return {
             "answer": "Could not complete analysis due to temporary API limits. Please retry in a few seconds.",

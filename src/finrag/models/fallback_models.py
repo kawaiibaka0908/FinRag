@@ -13,12 +13,13 @@ logger = logging.getLogger(__name__)
 class SentenceTransformerEmbeddingModel(BaseEmbeddingModel):
     """Free embedding model using sentence-transformers."""
     
-    def __init__(self, model: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model: str = "all-MiniLM-L6-v2", local_files_only: bool = False):
         """
         Initialize with a free sentence-transformer model.
         Default: all-MiniLM-L6-v2 (lightweight, good quality, 384 dimensions)
         """
         self.model_name = model
+        self.local_files_only = local_files_only
         self.model = None
         logger.info("Using fallback embedding model: %s", model)
     
@@ -27,8 +28,25 @@ class SentenceTransformerEmbeddingModel(BaseEmbeddingModel):
         if self.model is None:
             try:
                 logger.info("Loading sentence-transformer model '%s'", self.model_name)
-                from sentence_transformers import SentenceTransformer
-                self.model = SentenceTransformer(self.model_name)
+                import importlib.metadata
+                import pandas
+                original_version = importlib.metadata.version
+
+                def package_version(name):
+                    version = original_version(name)
+                    if name.lower() == "pandas" and not version:
+                        return pandas.__version__
+                    return version
+
+                importlib.metadata.version = package_version
+                try:
+                    from sentence_transformers import SentenceTransformer
+                finally:
+                    importlib.metadata.version = original_version
+                self.model = SentenceTransformer(
+                    self.model_name,
+                    local_files_only=self.local_files_only,
+                )
                 logger.debug("Sentence-transformer model loaded")
             except ImportError:
                 raise ImportError(

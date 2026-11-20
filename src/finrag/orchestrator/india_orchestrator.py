@@ -1,6 +1,8 @@
 import re
 import time
 import logging
+import json
+from pathlib import Path
 from ..scoring.news_fetcher import IndianFinancialNewsFetcher
 from ..scoring.financial_data_fetcher import FinancialDataFetcher
 from ..models.gemini_models import GeminiQAModel
@@ -54,6 +56,35 @@ STOCKS = {
     "ITC": {"name": "ITC Limited", "ticker": "ITC.NS", "sector": "Diversified FMCG"},
     "HINDUNILVR": {"name": "Hindustan Unilever", "ticker": "HINDUNILVR.NS", "sector": "FMCG Staples"},
 }
+
+
+def _add_mapped_indian_companies():
+    """Make the existing Indian ticker mapping available to query resolution."""
+    mapping_path = Path(__file__).resolve().parents[3] / "data" / "mappings" / "ticker_mapping.json"
+    try:
+        records = json.loads(mapping_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Could not load company ticker mapping %s: %s", mapping_path, exc)
+        return
+
+    for record in records:
+        ticker = record.get("ticker", "")
+        if not ticker.endswith((".NS", ".BO")):
+            continue
+        known = next((value for value in STOCKS.values() if value["ticker"] == ticker), None)
+        company = known or {
+            "name": record.get("company_name", ticker),
+            "ticker": ticker,
+            "sector": "Equities",
+        }
+        aliases = [record.get("company_name", ""), *record.get("aliases", []), ticker.rsplit(".", 1)[0]]
+        for alias in aliases:
+            key = alias.strip().upper() if alias else ""
+            if key and (key not in STOCKS or STOCKS[key]["ticker"] == ticker):
+                STOCKS[key] = company
+
+
+_add_mapped_indian_companies()
 
 SECTOR_MAP = {
     # Space & Satellite
@@ -139,7 +170,7 @@ class SectorResearchAgent:
         q = query.lower()
         found = {}
         for keyword, keys in SECTOR_MAP.items():
-            if re.search(r'\b' + re.escape(keyword) + r'\b', q) or keyword in q:
+            if re.search(r'\b' + re.escape(keyword) + r'\b', q):
                 for k in keys:
                     if k not in found and k in STOCKS:
                         found[k] = STOCKS[k]

@@ -6,6 +6,7 @@ current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir / "src"))
 
 from finrag.orchestrator.langgraph_orchestrator import FinRAGLangGraphOrchestrator
+from finrag.vectorstore.annual_report_store import load_annual_report_store
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -95,10 +96,15 @@ def display_results(result):
         border_style="bold blue",
         expand=False
     ))
+    if result.get("sources_used"):
+        console.print(Panel(str(result["sources_used"]), title="Sources used for this query", border_style="dim"))
 
 def main():
     print_banner()
-    orchestrator = FinRAGLangGraphOrchestrator()
+    vector_store, store_message = load_annual_report_store()
+    if store_message:
+        console.print(f"[yellow]Annual report RAG unavailable:[/yellow] {store_message}")
+    orchestrator = FinRAGLangGraphOrchestrator(vector_store=vector_store)
 
     while True:
         console.print("[bold white]Type your investment query, sector comparison, or 'examples' (or 'q' to quit):[/bold white]")

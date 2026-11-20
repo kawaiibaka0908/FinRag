@@ -55,10 +55,13 @@ class AgentState(TypedDict):
     entities: List[Dict[str, Any]]
     fundamentals: List[Dict[str, Any]]
     news: List[Dict[str, Any]]
-    rag_excerpts: List[str]
+    rag_excerpts: List[Dict[str, Any]]
     context_text: str
     answer: str
     confidence: float
+    sources_used: List[Dict[str, Any]]
+    unsupported_tickers: List[str]
+    validated_ticker_data: Dict[str, Dict[str, Any]]
     trace: List[Dict[str, Any]]
     elapsed_seconds: float
 
@@ -80,6 +83,7 @@ class FinRAGLangGraphOrchestrator:
         # 1. Register Agent Nodes (guardrail_node is FIRST)
         workflow.add_node("guardrail_node", self._node_guardrail)
         workflow.add_node("out_of_domain_node", self._node_out_of_domain)
+        workflow.add_node("unsupported_ticker_node", self._node_unsupported_ticker)
         workflow.add_node("intent_agent", self._node_intent_and_entities)
         workflow.add_node("sector_agent", self._node_sector_research)
         workflow.add_node("quant_engine", self._node_quant_engine)
@@ -98,18 +102,21 @@ class FinRAGLangGraphOrchestrator:
             self._route_guardrail,
             {
                 "out_of_domain_node": "out_of_domain_node",
+                "unsupported_ticker_node": "unsupported_ticker_node",
                 "intent_agent": "intent_agent"
             }
         )
 
         # If rejected -> Terminate immediately
         workflow.add_edge("out_of_domain_node", END)
+        workflow.add_edge("unsupported_ticker_node", END)
 
         # If approved -> Intent conditional branch
         workflow.add_conditional_edges(
             "intent_agent",
             self._route_intent,
             {
+                "unsupported_ticker_node": "unsupported_ticker_node",
                 "sector_agent": "sector_agent",
                 "quant_engine": "quant_engine"
             }
@@ -126,12 +133,16 @@ class FinRAGLangGraphOrchestrator:
 
     # --- Routing Condition 1: Guardrail ---
     def _route_guardrail(self, state: AgentState) -> str:
+        if state.get("unsupported_tickers"):
+            return "unsupported_ticker_node"
         if not state.get("is_in_domain", True):
             return "out_of_domain_node"
         return "intent_agent"
 
     # --- Routing Condition 2: Intent ---
     def _route_intent(self, state: AgentState) -> str:
+        if state.get("unsupported_tickers"):
+            return "unsupported_ticker_node"
         if state.get("is_sector_query") or not state.get("entities"):
             return "sector_agent"
         return "quant_engine"
@@ -146,6 +157,8 @@ class FinRAGLangGraphOrchestrator:
 
         # Check 1: Ticker match
         has_ticker = any(re.search(r'\b' + re.escape(k) + r'\b', q_upper) or v["name"].upper() in q_upper for k, v in STOCKS.items())
+        explicit_tickers = re.findall(r"\b[A-Z0-9&-]+\.(?:NS|BO)\b", q_upper)
+        has_ticker = has_ticker or bool(explicit_tickers)
         
         # Check 2: Sector match
         has_sector = any(re.search(r'\b' + re.escape(s) + r'\b', q_lower) for s in SECTOR_MAP.keys())
@@ -182,8 +195,26 @@ class FinRAGLangGraphOrchestrator:
 
         return {
             "is_in_domain": is_domain,
+            "unsupported_tickers": [],
+            "validated_ticker_data": {},
             "trace": trace
         }
+
+    def _node_unsupported_ticker(self, state: AgentState) -> Dict[str, Any]:
+        tickers = state.get("unsupported_tickers", [])
+        answer = (
+            "I could not validate the following NSE/BSE ticker(s) through the configured market data source: "
+            + ", ".join(tickers)
+            + ". Please verify the exchange symbol. No company analysis or annual-report retrieval was run."
+        )
+        trace = list(state.get("trace", []))
+        trace.append({
+            "step": len(trace) + 1,
+            "agent": "Ticker Mapping Validation",
+            "action": "Unsupported Ticker Rejected",
+            "detail": f"Yahoo Finance validation failed for: {', '.join(tickers)}",
+        })
+        return {"answer": answer, "confidence": 0.0, "sources_used": [], "trace": trace}
 
     # --- Node Rejection: Out of Domain Node ---
     def _node_out_of_domain(self, state: AgentState) -> Dict[str, Any]:
@@ -219,11 +250,49 @@ class FinRAGLangGraphOrchestrator:
         query = state["query"]
         up = query.upper()
         hits = []
+        validated_ticker_data = dict(state.get("validated_ticker_data", {}))
+        unsupported_tickers = []
+        explicit_tickers = list(dict.fromkeys(re.findall(r"\b[A-Z0-9&-]+\.(?:NS|BO)\b", up)))
 
         for k, v in STOCKS.items():
             if re.search(r'\b' + re.escape(k) + r'\b', up) or v["name"].upper() in up:
                 if v not in hits:
                     hits.append(v)
+
+        mapped_by_ticker = {item["ticker"].upper(): item for item in STOCKS.values()}
+        for ticker in explicit_tickers:
+            mapped = mapped_by_ticker.get(ticker)
+            if mapped and mapped not in hits:
+                hits.append(mapped)
+                continue
+            if mapped:
+                continue
+
+            # The existing Yahoo Finance integration also validates explicitly
+            # supplied Indian symbols that are not in the local alias mapping.
+            try:
+                stats = self.quant.get_company_data(ticker)
+                company_name = stats.get("company_name")
+                has_market_identity = any((
+                    stats.get("current_price"), stats.get("market_cap"),
+                    (stats.get("data_completeness") or 0) > 0,
+                    stats.get("sector") not in (None, "", "Unknown"),
+                    stats.get("industry") not in (None, "", "Unknown"),
+                ))
+                if stats.get("error") or not company_name or company_name.upper() == ticker or not has_market_identity:
+                    unsupported_tickers.append(ticker)
+                    continue
+                validated_ticker_data[ticker] = stats
+                entity = {
+                    "name": company_name,
+                    "ticker": ticker,
+                    "sector": stats.get("sector") if stats.get("sector") not in (None, "", "Unknown") else "Equities",
+                }
+                if entity not in hits:
+                    hits.append(entity)
+            except Exception as exc:
+                logger.warning("Yahoo Finance could not validate explicit ticker %s: %s", ticker, exc)
+                unsupported_tickers.append(ticker)
 
         q_lower = query.lower()
         sector_words = [
@@ -233,7 +302,7 @@ class FinRAGLangGraphOrchestrator:
             "banking", "it ", "auto", "energy", "power", "infra",
             "renewable", "fmcg", "oil", "metals"
         ]
-        is_sec = any(w in q_lower for w in sector_words)
+        is_sec = not hits and any(w in q_lower for w in sector_words)
 
         trace = list(state.get("trace", []))
         trace.append({
@@ -246,14 +315,19 @@ class FinRAGLangGraphOrchestrator:
         return {
             "entities": hits,
             "is_sector_query": is_sec,
+            "unsupported_tickers": unsupported_tickers,
+            "validated_ticker_data": validated_ticker_data,
             "trace": trace
         }
 
     # --- Node 2: Sector Research Agent ---
     def _node_sector_research(self, state: AgentState) -> Dict[str, Any]:
         query = state["query"]
-        sector_stocks = self.sector_agent.detect_sectors(query)
         entities = list(state.get("entities", []))
+
+        # Only expand a peer basket for a sector query. A company name such as
+        # "Reliance Power" must not accidentally fan out to the power sector.
+        sector_stocks = self.sector_agent.detect_sectors(query) if state.get("is_sector_query") else {}
 
         for k, v in sector_stocks.items():
             if v not in entities:
@@ -283,7 +357,9 @@ class FinRAGLangGraphOrchestrator:
             sector = t.get("sector", "Equities")
 
             try:
-                stats = self.quant.get_company_data(ticker)
+                stats = state.get("validated_ticker_data", {}).get(ticker)
+                if stats is None:
+                    stats = self.quant.get_company_data(ticker)
                 mcap = stats.get("market_cap", 0)
                 mcap_str = f"₹{mcap / 1e7:,.2f} Cr" if mcap else "N/A"
                 price = stats.get("current_price", "N/A")
@@ -341,7 +417,7 @@ class FinRAGLangGraphOrchestrator:
             "step": len(trace) + 1,
             "agent": "LangGraph News Agent",
             "action": "Breaking Catalyst Feeds Aggregation",
-            "detail": f"Aggregated {len(collected)} live financial headlines from Reuters & Google News India."
+            "detail": f"Aggregated {len(collected)} live financial headlines returned by the configured news fetcher."
         })
 
         return {
@@ -353,23 +429,54 @@ class FinRAGLangGraphOrchestrator:
     def _node_filings_rag(self, state: AgentState) -> Dict[str, Any]:
         query = state["query"]
         rag_excerpts = []
+        retrieval_status = []
+        entities = state.get("entities", [])
 
-        if self.store:
-            try:
-                docs = self.store.similarity_search(query, k=4)
-                if docs:
-                    for d in docs:
-                        if isinstance(d, dict) and d.get("text"):
-                            rag_excerpts.append(d["text"])
-            except Exception:
-                pass
+        if not entities:
+            retrieval_status.append("Skipped: no company was selected for company-level research.")
+        elif not self.store:
+            retrieval_status.extend(
+                f"{entity['name']} ({entity['ticker']}): skipped because ChromaDB is unavailable."
+                for entity in entities
+            )
+        else:
+            for entity in entities:
+                ticker = entity.get("ticker")
+                name = entity.get("name", ticker or "Unknown company")
+                if not ticker:
+                    retrieval_status.append(f"{name}: skipped because no reliable ticker is available.")
+                    continue
+                try:
+                    docs = self.store.similarity_search(query, k=3, where={"ticker": ticker})
+                    company_docs = []
+                    for doc in docs:
+                        metadata = doc.get("metadata") or {}
+                        # Defend against a broken/legacy backend that ignores `where`.
+                        if metadata.get("ticker") != ticker or not doc.get("text"):
+                            continue
+                        company_docs.append({
+                            "text": doc["text"],
+                            "company_name": metadata.get("company_name", name),
+                            "ticker": ticker,
+                            "financial_year": metadata.get("financial_year", "Not recorded"),
+                            "source_document": metadata.get("source_document", metadata.get("source", "Not recorded")),
+                            "document_type": metadata.get("document_type", "annual_report"),
+                        })
+                    rag_excerpts.extend(company_docs)
+                    retrieval_status.append(
+                        f"{name} ({ticker}): matched {len(company_docs)} company-filtered report chunks."
+                        if company_docs else f"{name} ({ticker}): no indexed company report; RAG skipped."
+                    )
+                except Exception as exc:
+                    logger.exception("Annual report retrieval failed for %s", ticker)
+                    retrieval_status.append(f"{name} ({ticker}): retrieval failed: {exc}")
 
         trace = list(state.get("trace", []))
         trace.append({
             "step": len(trace) + 1,
             "agent": "LangGraph Filings RAG",
             "action": "Vector Similarity Retrieval",
-            "detail": f"Scanned ChromaDB index over corporate filings. Matched {len(rag_excerpts)} audited chunks."
+            "detail": "Company Knowledge Layer: " + " ".join(retrieval_status)
         })
 
         return {
@@ -383,7 +490,7 @@ class FinRAGLangGraphOrchestrator:
 
         funds = state.get("fundamentals", [])
         if funds:
-            parts.append("### Real-Time Market Fundamentals (NSE/BSE):")
+            parts.append("### Current Market Fundamentals (Yahoo Finance via yfinance, retrieved for this query):")
             for f in funds:
                 parts.append(
                     f"- {f['name']} ({f['ticker']}, {f['sector']}): "
@@ -401,8 +508,13 @@ class FinRAGLangGraphOrchestrator:
 
         excerpts = state.get("rag_excerpts", [])
         if excerpts:
-            parts.append("\n### Audited Annual Reports Filings Excerpts:")
-            parts.append("\n---\n".join(excerpts))
+            parts.append("\n### Historical Company Disclosures (annual reports; not current market data):")
+            for excerpt in excerpts:
+                parts.append(
+                    f"[Company: {excerpt['company_name']} | Ticker: {excerpt['ticker']} | "
+                    f"Financial year: {excerpt['financial_year']} | Source: {excerpt['source_document']} | "
+                    f"Document type: {excerpt['document_type']}]\n{excerpt['text']}"
+                )
 
         full_context = "\n\n".join(parts)
 
@@ -419,6 +531,135 @@ class FinRAGLangGraphOrchestrator:
             "trace": trace
         }
 
+    def _synthesis_is_in_scope(self, answer: str, entities: List[Dict[str, Any]], is_sector_query: bool) -> bool:
+        """Reject a synthesis that centers on known, unrelated Indian companies/sectors."""
+        selected_tickers = {entity.get("ticker") for entity in entities}
+        answer_lower = answer.lower()
+        selected_sector_text = " ".join(entity.get("sector", "") for entity in entities).lower()
+
+        known_by_ticker = {value["ticker"]: value for value in STOCKS.values()}
+        for ticker, info in known_by_ticker.items():
+            if ticker in selected_tickers:
+                continue
+            name = info.get("name", "").lower()
+            if name and len(name) > 3 and name in answer_lower:
+                candidate_sector = info.get("sector", "").lower()
+                shared_terms = {
+                    token for token in re.findall(r"[a-z]+", candidate_sector)
+                    if token not in {"and", "the", "limited", "company", "equities", "enterprise"}
+                } & {
+                    token for token in re.findall(r"[a-z]+", selected_sector_text)
+                    if token not in {"and", "the", "limited", "company", "equities", "enterprise"}
+                }
+                if candidate_sector and selected_sector_text and not shared_terms:
+                    return False
+
+        if is_sector_query:
+            for keyword in ("it", "software", "technology"):
+                selected_for_sector = any(
+                    entity.get("ticker") in SECTOR_MAP.get(keyword, []) for entity in entities
+                )
+                if not selected_for_sector and re.search(
+                    rf"\b{re.escape(keyword)}\s+(?:sector|stocks|companies)\b", answer_lower
+                ):
+                    return False
+        return True
+
+    @staticmethod
+    def _sources_from_state(state: AgentState) -> List[Dict[str, Any]]:
+        """Describe only evidence actually fetched and placed in this query context."""
+        sources = []
+        fundamentals = state.get("fundamentals", [])
+        if fundamentals:
+            sources.append({
+                "type": "market_data",
+                "provider": "Yahoo Finance via yfinance",
+                "tickers": list(dict.fromkeys(item.get("ticker") for item in fundamentals if item.get("ticker"))),
+            })
+        for item in state.get("news", []):
+            title = item.get("title")
+            if title:
+                source = {"type": "news", "title": title}
+                for field in ("source", "published", "link"):
+                    if item.get(field):
+                        source[field] = item[field]
+                sources.append(source)
+        for item in state.get("rag_excerpts", []):
+            sources.append({
+                "type": "annual_report",
+                "company_name": item.get("company_name"),
+                "ticker": item.get("ticker"),
+                "financial_year": item.get("financial_year"),
+                "source_document": item.get("source_document"),
+            })
+        return sources
+
+    @staticmethod
+    def _has_unsupported_source_attribution(answer: str, state: AgentState) -> bool:
+        """Reject explicit source attributions that are absent from this query's evidence."""
+        attributions = re.findall(
+            r"\b(?:according to|as per|as reported by|reported by|data from|source:)\s+([^.;\n]+)",
+            answer,
+            flags=re.IGNORECASE,
+        )
+        if not attributions:
+            return False
+
+        available = []
+        if state.get("fundamentals"):
+            available.extend(("yahoo finance", "yfinance"))
+        for item in state.get("news", []):
+            if item.get("source"):
+                available.append(item["source"])
+        for item in state.get("rag_excerpts", []):
+            available.extend(
+                value for value in (
+                    item.get("source_document"), item.get("company_name"),
+                    item.get("ticker"), item.get("financial_year"),
+                ) if value and value != "Not recorded"
+            )
+
+        normalize = lambda value: re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+        allowed = [normalize(source) for source in available]
+        return any(
+            not any(source and source in normalize(claim) for source in allowed)
+            for claim in attributions
+        )
+
+    @staticmethod
+    def _grounded_fallback_answer(state: AgentState, reason: str) -> str:
+        """Provide query-scoped source data when Gemini fails or returns off-scope text."""
+        parts = [
+            "## Grounded Research Summary",
+            f"Gemini synthesis was omitted: {reason}",
+            "The following facts come from the selected entities and sources for this query.",
+        ]
+        fundamentals = state.get("fundamentals", [])
+        if fundamentals:
+            parts.append("### Market data (Yahoo Finance via yfinance)")
+            for item in fundamentals:
+                parts.append(
+                    f"- {item.get('name')} ({item.get('ticker')}): price {item.get('price')}, "
+                    f"P/E {item.get('pe')}, ROE {item.get('roe')}, revenue growth {item.get('rev_growth')}, "
+                    f"debt/equity {item.get('debt_equity')}, 1Y return {item.get('yr_return')}."
+                )
+        news_items = state.get("news", [])
+        if news_items:
+            parts.append("### Recent news")
+            for item in news_items[:6]:
+                attribution = [value for value in (item.get("source"), item.get("published")) if value]
+                suffix = f" ({', '.join(attribution)})" if attribution else ""
+                parts.append(f"- {item.get('title')}{suffix}")
+        excerpts = state.get("rag_excerpts", [])
+        if excerpts:
+            parts.append("### Company report excerpts")
+            parts.extend(
+                f"- {item['company_name']} ({item['ticker']}), FY {item['financial_year']}, "
+                f"{item['source_document']}: {item['text'][:500]}"
+                for item in excerpts
+            )
+        return "\n\n".join(parts)
+
     # --- Node 7: Advisory Synthesis Agent ---
     def _node_advisory_synthesis(self, state: AgentState) -> Dict[str, Any]:
         context = state.get("context_text", "")
@@ -430,18 +671,38 @@ class FinRAGLangGraphOrchestrator:
             question=query,
             query_type="sector" if is_sec else "stock"
         )
+        answer = res.get("answer", "")
+        fallback_reason = None
+        if not answer or res.get("confidence", 0.0) <= 0:
+            fallback_reason = "the synthesis service did not return a usable answer."
+        elif not self._synthesis_is_in_scope(answer, state.get("entities", []), is_sec):
+            fallback_reason = "the generated answer referred to a company or sector outside this query."
+        elif self._has_unsupported_source_attribution(answer, state):
+            fallback_reason = "the generated answer attributed information to a source absent from this query's evidence."
+        if fallback_reason:
+            answer = self._grounded_fallback_answer(state, fallback_reason)
 
         trace = list(state.get("trace", []))
         trace.append({
             "step": len(trace) + 1,
             "agent": "LangGraph Lead Advisory Synthesis",
             "action": "Grounded Institutional Memorandum Generation",
-            "detail": "Synthesized executive stance, valuation matrix, and downside risk triggers."
+            "detail": (
+                "Returned a query-scoped grounded summary after rejecting unusable synthesis."
+                if fallback_reason else "Synthesized the query-scoped market and company evidence."
+            )
         })
 
         return {
-            "answer": res.get("answer", ""),
-            "confidence": res.get("confidence", 0.95),
+            "answer": answer,
+            "confidence": min(
+                float(res.get("confidence", 0.0)),
+                0.95 if state.get("fundamentals") and state.get("news") and state.get("rag_excerpts")
+                else 0.75 if state.get("fundamentals") and state.get("news")
+                else 0.55 if (state.get("fundamentals") or state.get("news") or state.get("rag_excerpts"))
+                else 0.0,
+            ) if not fallback_reason else 0.0,
+            "sources_used": self._sources_from_state(state),
             "trace": trace
         }
 
@@ -459,6 +720,9 @@ class FinRAGLangGraphOrchestrator:
             "context_text": "",
             "answer": "",
             "confidence": 0.0,
+            "sources_used": [],
+            "unsupported_tickers": [],
+            "validated_ticker_data": {},
             "trace": [],
             "elapsed_seconds": 0.0
         }

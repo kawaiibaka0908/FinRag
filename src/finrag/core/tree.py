@@ -145,9 +145,18 @@ class RAPTORTree:
         
         # Build vectorstore index after all nodes are added
         if self.vectorstore:
-            logger.info("Building Pathway VectorStore index...")
-            self.vectorstore.build_index()
-            logger.info("Pathway VectorStore ready for queries")
+            if self.use_chromadb and isinstance(self.vectorstore, ChromaVectorStore):
+                node_ids = [node.node_id for node in self.leaf_nodes]
+                embeddings = np.array([node.embedding for node in self.leaf_nodes])
+                texts = [node.text for node in self.leaf_nodes]
+                for node_id, embedding in zip(node_ids, embeddings):
+                    self.vectorstore.embedding_cache[node_id] = embedding
+                self.vectorstore.add_vectors(node_ids, embeddings, texts)
+                logger.info("ChromaDB VectorStore indexed %d annual report chunks", len(node_ids))
+            else:
+                logger.info("Building Pathway VectorStore index...")
+                self.vectorstore.build_index()
+                logger.info("Pathway VectorStore ready for queries")
     
     def add_documents_incremental(
         self,
@@ -347,6 +356,9 @@ class RAPTORTree:
                 cluster_texts,
                 max_tokens=self.config.summarization_length
             )
+            if not isinstance(summary, str) or not summary.strip():
+                # Keep indexing usable when a local summarizer returns no text.
+                summary = "\n".join(text for text in cluster_texts if text)[:2000].strip()
             
             # Create embedding for summary
             summary_embedding = self.embedding_model.create_embedding(summary)
@@ -430,15 +442,26 @@ class RAPTORTree:
                     # Re-add nodes
                     if old_nodes:
                         self.vectorstore.add_nodes(old_nodes)
-                        # Add vectors if embeddings available
-                        if self.vectorstore.embedding_cache:
-                            node_ids = list(self.vectorstore.node_ids)
-                            embeddings = np.array([self.vectorstore.embedding_cache[nid] for nid in node_ids])
-                            texts = [self.vectorstore.nodes[nid].text for nid in node_ids]
-                            self.vectorstore.add_vectors(node_ids, embeddings, texts)
-                            self.vectorstore.build_index()
+                        node_ids = [node.node_id for node in old_nodes]
+                        embeddings = np.array([node.embedding for node in old_nodes])
+                        texts = [node.text for node in old_nodes]
+                        for node_id, embedding in zip(node_ids, embeddings):
+                            self.vectorstore.embedding_cache[node_id] = embedding
+                        self.vectorstore.add_vectors(node_ids, embeddings, texts)
+                        self.vectorstore.build_index()
                 else:
                     vectorstore_path = Path(self.chroma_config.persist_directory)
+                    if self.vectorstore.collection.count() == 0 and self.leaf_nodes:
+                        # Recover saved trees whose vectors were not persisted by
+                        # an earlier save, using embeddings already in tree.json.
+                        node_ids = [node.node_id for node in self.leaf_nodes]
+                        embeddings = np.array([node.embedding for node in self.leaf_nodes])
+                        texts = [node.text for node in self.leaf_nodes]
+                        self.vectorstore.add_nodes(self.leaf_nodes)
+                        for node_id, embedding in zip(node_ids, embeddings):
+                            self.vectorstore.embedding_cache[node_id] = embedding
+                        self.vectorstore.add_vectors(node_ids, embeddings, texts)
+                        self.vectorstore.build_index()
                 self.vectorstore.save(str(vectorstore_path))
                 logger.info("  ChromaDB VectorStore saved")
             elif isinstance(self.vectorstore, PathwayVectorStore):

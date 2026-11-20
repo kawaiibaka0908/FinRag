@@ -17,12 +17,16 @@ current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir / "src"))
 
 from finrag.orchestrator.langgraph_orchestrator import FinRAGLangGraphOrchestrator
+from finrag.vectorstore.annual_report_store import load_annual_report_store
 
 @st.cache_resource
 def get_orchestrator():
-    return FinRAGLangGraphOrchestrator()
+    vector_store, store_message = load_annual_report_store()
+    return FinRAGLangGraphOrchestrator(vector_store=vector_store), store_message
 
-orchestrator = get_orchestrator()
+orchestrator, annual_report_store_message = get_orchestrator()
+if annual_report_store_message:
+    st.warning(annual_report_store_message)
 
 # Styling
 st.markdown("""
@@ -190,7 +194,7 @@ if run_analysis and user_query:
         if news_items:
             st.markdown(f"**Aggregated {len(news_items)} Live Headlines Ingested by the LangGraph News Node:**")
             for item in news_items:
-                source = item.get("source", "Financial News")
+                source = item.get("source", "")
                 date = item.get("published", "")
                 link = item.get("link", "#")
                 st.markdown(f"- 🔗 [{item.get('title')}]({link}) — <small style='color: #64748B;'>*{source} | {date}*</small>", unsafe_allow_html=True)
@@ -201,8 +205,11 @@ if run_analysis and user_query:
         st.markdown("**LangGraph State - Resolved Entities:**")
         st.json([e.get("name") for e in result.get("entities", [])])
         st.markdown("**Model Output Confidence:**")
-        st.progress(float(result.get("confidence", 0.95)))
-        st.caption("State machine strictly validated against deterministic tools. Zero probabilistic hallucination on valuation ratios.")
+        st.progress(float(result.get("confidence", 0.0)))
+        st.caption("Confidence reflects the synthesis and evidence available for this query; it is not a guarantee of accuracy.")
+        if result.get("sources_used"):
+            st.markdown("**Sources used for this query:**")
+            st.json(result["sources_used"])
 
 st.markdown("---")
 st.caption("🏛️ FinRAG Institutional Equity Platform | Powered by LangGraph StateGraph, Google Gemini, Yahoo Finance API & RAPTOR Vector Store")

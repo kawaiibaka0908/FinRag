@@ -20,6 +20,11 @@
     "aliases": ["Reliance", "RIL", "Reliance Industries Ltd"]
   },
   {
+    "ticker": "RPOWER.NS",
+    "company_name": "Reliance Power",
+    "aliases": ["Reliance Power", "Reliance Power Ltd", "RPower"]
+  },
+  {
     "ticker": "HDFCBANK.NS",
     "company_name": "HDFC Bank",
     "aliases": ["HDFC Bank", "HDFC", "HDFC Bank Ltd"]
@@ -33,6 +38,16 @@
     "ticker": "MARUTI.NS",
     "company_name": "Maruti Suzuki",
     "aliases": ["Maruti", "Maruti Suzuki", "Maruti Suzuki India"]
+  },
+  {
+    "ticker": "TATAMOTORS.NS",
+    "company_name": "Tata Motors",
+    "aliases": ["Tata Motors", "Tata Motors Ltd", "TATAMOTORS"]
+  },
+  {
+    "ticker": "M&M.NS",
+    "company_name": "Mahindra & Mahindra",
+    "aliases": ["Mahindra", "Mahindra & Mahindra", "M&M"]
   },
   {
     "ticker": "WIPRO.NS",

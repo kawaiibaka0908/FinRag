@@ -289,6 +289,24 @@ class FinancialChunker(BaseChunker):
             "company": None,
             "year": None
         }
+
+        source_match = re.search(r"(?im)^Source:\s*([^\r\n]+)", text[:1000])
+        if source_match:
+            metadata["source"] = source_match.group(1).strip()
+            metadata["source_document"] = source_match.group(1).strip()
+        company_match = re.search(r"(?im)^Company:\s*([^\r\n]+)", text[:1000])
+        ticker_match = re.search(r"(?im)^Ticker:\s*([^\r\n]+)", text[:1000])
+        financial_year_match = re.search(r"(?im)^Financial Year:\s*([^\r\n]+)", text[:1000])
+        document_type_match = re.search(r"(?im)^Document Type:\s*([^\r\n]+)", text[:1000])
+        if company_match:
+            metadata["company"] = company_match.group(1).strip()
+            metadata["company_name"] = company_match.group(1).strip()
+        if ticker_match:
+            metadata["ticker"] = ticker_match.group(1).strip().upper()
+        if financial_year_match:
+            metadata["financial_year"] = financial_year_match.group(1).strip()
+        if document_type_match:
+            metadata["document_type"] = document_type_match.group(1).strip()
         
         # Extract year - look for 4-digit years (1900-2099)
         year_pattern = r'\b(19\d{2}|20\d{2})\b'

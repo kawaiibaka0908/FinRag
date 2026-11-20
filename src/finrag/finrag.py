@@ -119,7 +119,6 @@ class FinRAG:
             self.summarization_model = FlanT5SummarizationModel(
                 model_name="google/flan-t5-small"
             )
-            
             self.qa_model = FlanT5QAModel(
                 model_name="google/flan-t5-small"
             )
@@ -147,6 +146,14 @@ class FinRAG:
             chroma_config=self.chroma_config,
             use_chromadb=self.use_chromadb
         )
+
+        if self.use_chromadb and self.tree.vectorstore:
+            embedding_model_id = (
+                f"openai:{self.config.embedding_model}"
+                if has_openai
+                else "sentence-transformers:all-MiniLM-L6-v2"
+            )
+            self.tree.vectorstore.set_embedding_model(embedding_model_id)
         
         self.retriever = None
     
@@ -479,6 +486,10 @@ class FinRAG:
             else:
                 chunks = self.chunker.chunk_text(doc)
             all_chunks.extend(chunks)
+
+        all_chunks = [chunk for chunk in all_chunks if chunk.get("text", "").strip()]
+        if not all_chunks:
+            raise ValueError("No non-empty document chunks were created for indexing")
         
         self._log(f"Created {len(all_chunks)} chunks")
         
@@ -539,6 +550,10 @@ class FinRAG:
             else:
                 chunks = self.chunker.chunk_text(doc)
             all_chunks.extend(chunks)
+
+        all_chunks = [chunk for chunk in all_chunks if chunk.get("text", "").strip()]
+        if not all_chunks:
+            raise ValueError("No non-empty document chunks were created for indexing")
         
         self._log(f"Created {len(all_chunks)} new chunks")
         

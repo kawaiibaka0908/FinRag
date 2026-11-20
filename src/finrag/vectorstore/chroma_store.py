@@ -41,6 +41,7 @@ class ChromaConfig:
     collection_name: str = "finrag_embeddings"
     persist_directory: Optional[str] = None
     dimension: int = 1536  # OpenAI embedding dimension
+    embedding_model_id: Optional[str] = None
     
     def __post_init__(self) -> None:
         """Validate configuration."""
@@ -100,14 +101,43 @@ class ChromaVectorStore:
         try:
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
-                metadata={"description": "FinRAG embeddings for RAPTOR tree nodes"}
+                metadata={
+                    "description": "FinRAG embeddings for RAPTOR tree nodes",
+                    **({"embedding_model_id": self.config.embedding_model_id}
+                       if self.config.embedding_model_id else {}),
+                }
             )
+            if self.config.embedding_model_id:
+                metadata = dict(self.collection.metadata or {})
+                existing = metadata.get("embedding_model_id")
+                if self.collection.count() and existing != self.config.embedding_model_id:
+                    raise ValueError(
+                        f"Collection embedding identity is {existing or 'unknown'}; "
+                        f"cannot open it as {self.config.embedding_model_id}"
+                    )
+                metadata["embedding_model_id"] = self.config.embedding_model_id
+                self.collection.modify(metadata=metadata)
             logger.info(f"ChromaDB collection '{self.collection_name}' ready")
         except Exception as e:
             logger.error(f"Failed to create ChromaDB collection: {e}")
             raise
     
     # ---------------- Node management ----------------
+
+    def set_embedding_model(self, model_id: str) -> None:
+        """Persist the identity of the model used to create collection vectors."""
+        if not model_id:
+            raise ValueError("Embedding model identity cannot be empty")
+        self.config.embedding_model_id = model_id
+        metadata = dict(self.collection.metadata or {})
+        existing = metadata.get("embedding_model_id")
+        if self.collection.count() and existing != model_id:
+            raise ValueError(
+                f"Collection embedding identity is {existing or 'unknown'}; "
+                f"refusing to relabel its vectors as {model_id}"
+            )
+        metadata["embedding_model_id"] = model_id
+        self.collection.modify(metadata=metadata)
     
     def add_nodes(self, nodes: List[ClusterNode]) -> None:
         """
@@ -155,7 +185,15 @@ class ChromaVectorStore:
                 metadatas.append({
                     "node_id": node_id,
                     "level": str(node.level),
-                    "text_preview": node.text[:200] if len(node.text) > 200 else node.text
+                    "text_preview": node.text[:200] if len(node.text) > 200 else node.text,
+                    **{
+                        key: value for key, value in (node.metadata or {}).items()
+                        if key in {
+                            "source", "source_document", "company", "company_name",
+                            "ticker", "sector", "year", "financial_year", "document_type",
+                        }
+                        and isinstance(value, (str, int, float, bool))
+                    },
                 })
             else:
                 metadatas.append({"node_id": node_id, "level": "0"})
@@ -254,6 +292,38 @@ class ChromaVectorStore:
         except Exception as e:
             logger.error(f"ChromaDB search failed: {e}")
             return []
+
+    def similarity_search(
+        self, query: str, k: int = 4, where: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """Return stored document chunks for a text query.
+
+        The embedding model is attached by the application loader so queries use
+        the same model family as the persisted index.
+        """
+        embedding_model = getattr(self, "embedding_model", None)
+        if embedding_model is None:
+            raise RuntimeError("No query embedding model is configured for this ChromaDB index")
+        if not query or not query.strip():
+            return []
+        matching = self.collection.get(where=where, limit=1, include=["metadatas"])
+        if not matching.get("ids"):
+            return []
+        query_embedding = embedding_model.create_embedding(query.strip()).tolist()
+        results = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=min(k, self.collection.count()),
+            where=where,
+            include=["documents", "metadatas", "distances"],
+        )
+        documents = results.get("documents", [[]])[0]
+        metadatas = results.get("metadatas", [[]])[0]
+        distances = results.get("distances", [[]])[0]
+        return [
+            {"text": text, "metadata": metadata or {}, "distance": distance}
+            for text, metadata, distance in zip(documents, metadatas, distances)
+            if text
+        ]
     
     def clear(self) -> None:
         """Clear all vectors from ChromaDB."""
@@ -311,6 +381,7 @@ class ChromaVectorStore:
         # Save metadata about the vector store
         metadata = {
             "collection_name": self.collection_name,
+            "embedding_model_id": self.config.embedding_model_id,
             "node_count": len(self.nodes),
             "node_ids": self.node_ids,
             "is_built": self.is_built
