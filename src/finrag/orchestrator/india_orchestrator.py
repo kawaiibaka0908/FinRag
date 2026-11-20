@@ -38,41 +38,51 @@ class IndiaMultiAgentOrchestrator:
         context_parts = []
         fundamentals = []
 
-        for t in targets:
-            ticker = t["ticker"]
-            name = t["name"]
+        # If specific stocks were mentioned
+        if targets:
+            for t in targets:
+                ticker = t["ticker"]
+                name = t["name"]
 
-            # news
-            news_items = self.news.fetch_live_news(name, ticker, limit=4)
-            context_parts.append(f"Recent News for {name} ({ticker}):\n{self.news.format_news_for_context(news_items)}")
+                # news
+                news_items = self.news.fetch_live_news(name, ticker, limit=4)
+                context_parts.append(f"Recent News for {name} ({ticker}):\n{self.news.format_news_for_context(news_items)}")
 
-            # financials
-            try:
-                stats = self.quant.get_company_data(ticker)
-                mcap = stats.get("market_cap", 0)
-                mcap_str = f"₹{mcap / 1e7:,.2f} Cr" if mcap else "N/A"
-                price = stats.get("current_price", "N/A")
-                pe = stats.get("pe_ratio", "N/A")
-                roe = stats.get("roe", "N/A")
-                de = stats.get("debt_to_equity", "N/A")
+                # financials
+                try:
+                    stats = self.quant.get_company_data(ticker)
+                    mcap = stats.get("market_cap", 0)
+                    mcap_str = f"₹{mcap / 1e7:,.2f} Cr" if mcap else "N/A"
+                    price = stats.get("current_price", "N/A")
+                    pe = stats.get("pe_ratio", "N/A")
+                    roe = stats.get("roe", "N/A")
+                    de = stats.get("debt_to_equity", "N/A")
 
-                context_parts.append(
-                    f"Financials for {ticker} ({t['sector']}):\n"
-                    f"- Price: ₹{price}\n"
-                    f"- Market Cap: {mcap_str}\n"
-                    f"- P/E: {pe}\n"
-                    f"- ROE: {roe}\n"
-                    f"- Debt/Equity: {de}\n"
-                )
-                fundamentals.append({
-                    "ticker": ticker,
-                    "name": name,
-                    "price": price,
-                    "pe": pe,
-                    "mcap": mcap_str
-                })
-            except Exception as err:
-                logger.warning(f"Failed to fetch stats for {ticker}: {err}")
+                    context_parts.append(
+                        f"Financials for {ticker} ({t['sector']}):\n"
+                        f"- Price: ₹{price}\n"
+                        f"- Market Cap: {mcap_str}\n"
+                        f"- P/E: {pe}\n"
+                        f"- ROE: {roe}\n"
+                        f"- Debt/Equity: {de}\n"
+                    )
+                    fundamentals.append({
+                        "ticker": ticker,
+                        "name": name,
+                        "price": price,
+                        "pe": pe,
+                        "mcap": mcap_str
+                    })
+                except Exception as err:
+                    logger.warning(f"Failed to fetch stats for {ticker}: {err}")
+        else:
+            # Thematic / Sector / Broad query (e.g. "space stocks", "best EV stocks", etc.)
+            theme_news = self.news.fetch_live_news(query, limit=5)
+            context_parts.append(f"Live Market News for '{query}':\n{self.news.format_news_for_context(theme_news)}")
+            context_parts.append(
+                f"Topic: {query}\n"
+                f"Scope: Indian Equities (NSE & BSE), ISRO supply chain, defence, energy, and thematic sectors."
+            )
 
         # document chunks if available
         if self.store:
