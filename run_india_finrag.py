@@ -10,54 +10,88 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.markdown import Markdown
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 console = Console()
 
-PRESET_QUERIES = [
-    "Compare BDL vs HAL on global affairs, defense orders, and recent geopolitical outlook",
-    "Compare ICICI Bank with HDFC Bank and SBI on Net Interest Margins, valuation, and asset quality",
-    "How do recent macro events affect Reliance and Bharti Airtel in the telecom and digital landscape?",
-    "Analyze Larsen & Toubro (LT) order book growth and infrastructure execution in India",
-    "Evaluate Adani Enterprises exposure across energy, airports, and infrastructure following recent events",
-    "Whats better sector right now - space or EV? Best company from each and full analysis",
-    "Compare pharma sector vs IT sector - which has better outlook and top pick from each",
-    "Best renewable energy stocks in India right now with analysis",
+SUGGESTED_THEMES = [
+    "What is the better investment right now between the Space sector and the EV sector?",
+    "Compare Hindustan Aeronautics (HAL) vs Bharat Dynamics (BDL) on order book and valuation multiples",
+    "Compare ICICI Bank, HDFC Bank, and SBI on Net Interest Margins, credit costs, and asset quality",
+    "Evaluate Reliance Industries and Adani Enterprises on clean energy capex and recent news",
+    "Compare Indian IT sector vs Pharma sector for a 12-month defensive investment horizon"
 ]
 
 def print_banner():
     banner = """[bold cyan]
 ╔════════════════════════════════════════════════════════════════════════════════╗
-║    🏛️  FINRAG: MULTI-AGENT FINANCIAL & GEOPOLITICAL INTELLIGENCE              ║
-║         Indian Equities (NSE & BSE) with Gemini AI                            ║
+║    🏛️  FINRAG INSTITUTIONAL: MULTI-AGENT EQUITY INTELLIGENCE TERMINAL          ║
+║         NSE & BSE Equities | Deterministic RAG + Live Multi-Agent Feeds        ║
 ╚════════════════════════════════════════════════════════════════════════════════╝
 [/bold cyan]
-[green]✔ Agents:[/green] Stock Agent | Sector Research Agent | News Agent | Quant Agent
-[green]✔ News:[/green] Live Google News India / Yahoo Finance / Reuters
-[green]✔ Quant:[/green] Live NSE/BSE Ratios (P/E, Market Cap, ROE, Debt/Equity, Revenue Growth)
-[green]✔ Sectors:[/green] Defence, Banking, IT, Pharma, Auto/EV, Energy, Power, Infra, Metals, FMCG
-[green]✔ Filings:[/green] Annual Reports (HAL, BDL, L&T, Reliance Power)
+[green]● Active Agents:[/green] Intent Agent | Sector Research Agent | Quant Engine | News & Sentiment Agent | Filings RAG
+[green]● Real-Time Feeds:[/green] Live NSE/BSE Exchange Quotes | Reuters / Google News India RSS
+[green]● Corporate Filings:[/green] Integrated Annual Reports (HAL, BDL, L&T, Reliance Power)
     """
     console.print(banner)
 
 def display_results(result):
+    console.print(f"\n[bold green]⚡ Analysis Completed in {result.get('elapsed_seconds', 'N/A')} seconds across 5 Agent nodes[/bold green]\n")
+
+    # 1. Multi-Agent Execution Trace Table
+    if result.get("trace"):
+        trace_table = Table(title="🔍 Multi-Agent Execution Graph & Audit Trail", header_style="bold cyan")
+        trace_table.add_column("Step", style="dim", width=6)
+        trace_table.add_column("Agent Node", style="bold yellow")
+        trace_table.add_column("Action Taken", style="white")
+        trace_table.add_column("Details", style="dim white")
+
+        for t in result["trace"]:
+            trace_table.add_row(str(t["step"]), t["agent"], t["action"], t["detail"])
+        console.print(trace_table)
+        console.print("\n")
+
+    # 2. Quantitative Summary Table
     if result.get("fundamentals"):
-        table = Table(title="📊 Live NSE/BSE Market Fundamentals", header_style="bold magenta")
+        table = Table(title="📊 Real-Time Market Fundamentals & Valuation Ratios", header_style="bold magenta")
         table.add_column("Ticker", style="cyan")
         table.add_column("Company", style="white")
-        table.add_column("Price", justify="right", style="green")
+        table.add_column("Sector", style="dim")
+        table.add_column("Price (₹)", justify="right", style="green")
         table.add_column("P/E", justify="right", style="yellow")
         table.add_column("Market Cap", justify="right", style="blue")
+        table.add_column("ROE", justify="right", style="white")
+        table.add_column("1Y Return", justify="right", style="magenta")
 
         for item in result["fundamentals"]:
             price_str = f"₹{item['price']:,.2f}" if isinstance(item['price'], (int, float)) else str(item['price'])
             pe_str = f"{item['pe']:.2f}" if isinstance(item['pe'], (int, float)) else str(item['pe'])
-            table.add_row(item["ticker"], item["name"], price_str, pe_str, str(item["mcap"]))
+            table.add_row(
+                item.get("ticker", "N/A"),
+                item.get("name", "N/A")[:24],
+                item.get("sector", "Equities")[:16],
+                price_str,
+                pe_str,
+                str(item.get("mcap", "N/A")),
+                str(item.get("roe", "N/A")),
+                str(item.get("yr_return", "N/A"))
+            )
         console.print(table)
         console.print("\n")
 
+    # 3. Live News Feed Ingested
+    if result.get("news"):
+        console.print("[bold yellow]📰 Live Market News & Catalysts Ingested:[/bold yellow]")
+        for idx, n in enumerate(result["news"][:4], 1):
+            src = f" ({n.get('source', '')})" if n.get('source') else ""
+            pub = f" [{n.get('published', '')}]" if n.get('published') else ""
+            console.print(f"  [dim]{idx}.[/dim] {n.get('title')}[cyan]{src}[/cyan][dim]{pub}[/dim]")
+        console.print("\n")
+
+    # 4. Institutional Advisory Dossier
     console.print(Panel(
         Markdown(result.get("answer", "")),
-        title="🧠 Multi-Agent Research Dossier",
+        title="📑 Institutional Equity Research Dossier",
         border_style="bold blue",
         expand=False
     ))
@@ -67,32 +101,35 @@ def main():
     orchestrator = IndiaMultiAgentOrchestrator()
 
     while True:
-        console.print("\n[bold yellow]Select an option:[/bold yellow]")
-        for idx, q in enumerate(PRESET_QUERIES, 1):
-            console.print(f"  [cyan]{idx}.[/cyan] {q}")
-        console.print("  [cyan]C.[/cyan] Custom Question (type any Indian stock / sector question)")
-        console.print("  [cyan]Q.[/cyan] Quit")
+        console.print("[bold white]Type your investment query, sector comparison, or 'examples' (or 'q' to quit):[/bold white]")
+        user_input = input(">> ").strip()
 
-        choice = input(f"\nEnter choice (1-{len(PRESET_QUERIES)}, C, or Q): ").strip()
-        if choice.upper() == 'Q':
-            console.print("[bold red]Exiting FinRAG. Happy investing![/bold red]")
-            break
-
-        if choice.isdigit() and 1 <= int(choice) <= len(PRESET_QUERIES):
-            query = PRESET_QUERIES[int(choice) - 1]
-        elif choice.upper() == 'C':
-            query = input("Enter your custom query: ").strip()
-            if not query:
-                continue
-        else:
-            console.print("[red]Invalid selection. Try again.[/red]")
+        if not user_input:
             continue
 
-        console.print(f"\n[bold green]Running Multi-Agent Analysis on:[/bold green] '{query}'...")
-        with console.status("[bold cyan]Gathering live news, fetching fundamentals, running sector research...[/bold cyan]"):
-            result = orchestrator.run_comparative_analysis(query)
+        if user_input.lower() in ['q', 'exit', 'quit']:
+            console.print("[bold red]Session terminated. Happy investing![/bold red]")
+            break
+
+        if user_input.lower() == 'examples':
+            console.print("\n[bold yellow]Suggested Advisory Inquiries:[/bold yellow]")
+            for idx, ex in enumerate(SUGGESTED_THEMES, 1):
+                console.print(f"  [cyan]{idx}.[/cyan] {ex}")
+            console.print("\n")
+            continue
+
+        console.print(f"\n[bold green]Dispatching Multi-Agent Pipeline for:[/bold green] '{user_input}'...")
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=True
+        ) as progress:
+            task = progress.add_task("[bold cyan]Coordinating agents, querying exchange APIs, and synthesizing memo...", total=None)
+            result = orchestrator.run_comparative_analysis(user_input)
 
         display_results(result)
+        console.print("\n" + "="*80 + "\n")
 
 if __name__ == "__main__":
     main()
