@@ -1,126 +1,104 @@
-# 🏛️ Vortex-India: Multi-Agent Financial & Geopolitical Intelligence Platform
+# FinRag — Indian Stock Market Multi-Agent RAG
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Gemini](https://img.shields.io/badge/LLM-Google%20Gemini-orange.svg)](https://ai.google.dev/)
-[![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-purple.svg)](https://www.trychroma.com/)
-[![Streamlit](https://img.shields.io/badge/UI-Streamlit-red.svg)](https://streamlit.io/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+A multi-agent financial research assistant for Indian equities (NSE & BSE).
 
-An enterprise-grade, multi-agent equity and geopolitical intelligence platform specialized for Indian equities (**NSE & BSE**). 
+Most RAG setups just take a bunch of PDF documents, chop them into chunks, and do vector search. That works okay for static manuals, but for the stock market, looking at an annual report from 8 months ago without knowing what happened in the news yesterday gives you incomplete answers.
 
-Unlike naive RAG systems that query static documents in isolation, **Vortex-India** pioneers a **Dual-Horizon Intelligence Architecture**: it dynamically synthesizes long-term corporate filings (Annual Reports via RAPTOR hierarchical RAG) with real-time Indian market news (Reuters, Business Standard) and live quantitative exchange metrics (P/E, Market Cap, ROE, Debt/Equity via Yahoo Finance).
+FinRag fixes this by combining three things whenever you ask a question:
+1. **Corporate Filings (Annual Reports)** via vector search over parsed PDFs.
+2. **Live Breaking News** pulled in real time from Indian financial news feeds (Reuters, Business Standard, Google News India).
+3. **Real-time Fundamentals** directly from the market (live share prices, P/E ratio, Market Cap, ROE, Debt-to-Equity).
 
----
-
-## 🌟 Key Architecture & Capabilities
-
-```
-                                  [ User Query ]
-                                        │
-                                        ▼
-             ┌────────────────────────────────────────────────────────┐
-             │       🧠 India Multi-Agent Orchestrator (Gemini)       │
-             └──────────────────────────┬─────────────────────────────┘
-                                        │
-         ┌──────────────────────────────┼──────────────────────────────┐
-         ▼                              ▼                              ▼
-  [🛡️ Defence Agent]             [🏦 Banking Agent]            [⚡ Energy Agent]
-   (HAL, BDL, Missiles)          (ICICI, HDFC, SBI)            (Reliance, Adani, L&T)
-         │                              │                              │
-         └──────────────────────────────┼──────────────────────────────┘
-                                        │
-        ┌───────────────────────────────┴───────────────────────────────┐
-        ▼                               ▼                               ▼
- [📚 RAPTOR RAG Engine]      [📰 Live News Fetcher]        [📊 Quant Scorer]
-  Hierarchical Index of       Google News India RSS,        Live NSE/BSE Ratios,
-  Annual Reports (ChromaDB)   Reuters, Business Standard    P/E, ROE, Market Cap
-        │                               │                               │
-        └───────────────────────────────┬───────────────────────────────┘
-                                        ▼
-             ┌────────────────────────────────────────────────────────┐
-             │    📑 Executive Investment & Risk Dossier Synthesizer  │
-             └────────────────────────────────────────────────────────┘
-```
-
-### 1. Specialized Sector Agents
-- **Defence & Geopolitics Agent (`HAL.NS`, `BDL.NS`):** Tracks MoD capital expenditure allocations, indigenous export order books (Tejas LCA, Akash missile systems), and global geopolitical conflicts.
-- **Banking & Macro Agent (`ICICIBANK.NS`, `HDFCBANK.NS`, `SBIN.NS`):** Compares Net Interest Margins (NIM), gross/net NPAs, Return on Equity (ROE), and RBI interest rate cycle sensitivities.
-- **Conglomerates & Energy Agent (`RELIANCE.NS`, `ADANIENT.NS`, `BHARTIARTL.NS`):** Cross-analyzes green energy capex, corporate debt leverage, and breaking regulatory announcements.
-- **Infrastructure & Heavy Engineering (`LT.NS`):** Evaluates multi-year order backlogs and domestic infrastructure execution.
-
-### 2. Dual-Horizon Data Synthesis
-- **Long-Horizon Disclosures:** Ingests 400+ page Integrated Annual Reports (e.g., FY24-25) into semantic vector collections using ChromaDB and sentence-transformers.
-- **Short-Horizon Breaking News:** Automatically pulls, filters, and ranks live financial news articles from leading Indian financial publications.
-- **Live Fundamentals:** Queries Yahoo Finance for real-time market valuations, current share prices, and debt-to-equity ratios.
+Then, a specialized LLM agent synthesizes everything into a balanced investment brief.
 
 ---
 
-## 🚀 Quickstart Guide
+## What Can It Do?
 
-### Prerequisites
-- Python 3.10+
-- A free Google Gemini API Key (`GEMINI_API_KEY`)
+- **Compare Indian stocks side-by-side**: 
+  - Compare Defence giants: **HAL vs BDL** (order book, Tejas deliveries, MoD contracts, valuations).
+  - Compare Private & Public Banks: **ICICI Bank vs HDFC Bank vs SBI** (NIMs, NPA health, credit growth).
+  - Compare Conglomerates & Telecom: **Reliance vs Bharti Airtel**, or check **Adani Enterprises** across its energy/infrastructure segments.
+- **Sector-aware context**: It knows whether a company belongs to Defence, Banking, Infrastructure, or Conglomerates, and highlights metrics relevant to that sector.
+- **Zero API Cost**: Powered by Google Gemini's free tier (`gemini-3.8-flash` / `gemini-3.1-flash-lite`) and local embedding models.
 
-### 1. Installation
-Clone the repository and install dependencies:
+---
+
+## Project Structure
+
+```text
+FinRAGFinal/
+├── app.py                     # Streamlit web dashboard
+├── run_india_finrag.py        # Terminal CLI with quick presets
+├── requirements.txt           # Python dependencies
+├── data/                      # Annual reports (PDFs) and company mappings
+└── src/
+    └── finrag/
+        ├── models/
+        │   └── gemini_models.py       # Gemini QA and summarizer wrapper
+        ├── scoring/
+        │   ├── news_fetcher.py        # Live RSS & news aggregator
+        │   └── financial_data_fetcher.py # yfinance data collector
+        └── orchestrator/
+            └── india_orchestrator.py  # Entity detection and multi-source synthesis
+```
+
+---
+
+## Getting Started
+
+### 1. Clone & Install
+
 ```bash
-git clone https://github.com/<your-username>/vortex-india.git
-cd vortex-india/FinRAGFinal
+git clone https://github.com/kawaiibaka0908/FinRag.git
+cd FinRag
 pip install -r requirements.txt
 ```
 
-### 2. Environment Configuration
-Set your Gemini API Key:
-```bash
-# Windows PowerShell
-$env:GEMINI_API_KEY="your_gemini_api_key_here"
+### 2. Set Up Your API Key
 
-# Linux / MacOS
-export GEMINI_API_KEY="your_gemini_api_key_here"
+Get a free Gemini API key from [Google AI Studio](https://aistudio.google.com/):
+
+```bash
+# On Windows (PowerShell):
+$env:GEMINI_API_KEY="your_api_key_here"
+
+# On Linux / Mac:
+export GEMINI_API_KEY="your_api_key_here"
 ```
 
-### 3. Launch Interactive Terminal
-Run the terminal-based interactive multi-agent research CLI:
-```bash
-python run_india_finrag.py
-```
+### 3. Run It
 
-### 4. Launch Web Dashboard (Streamlit)
-Run the browser dashboard with live valuation cards and interactive comparative queries:
+**Option A: Web App (Streamlit)**
 ```bash
 streamlit run app.py
 ```
 
----
-
-## 📊 Sample Output: BDL vs HAL Defense Comparison
-
-```text
-=== LIVE VALUATION SUMMARY ===
-Ticker   | Company Name                   | Price (₹) | P/E Ratio | Market Cap
---------------------------------------------------------------------------------
-HAL.NS   | Hindustan Aeronautics Limited  | ₹4,180.50 | 33.46x    | ₹320,811 Cr
-BDL.NS   | Bharat Dynamics Limited        | ₹1,085.20 | 77.49x    | ₹37,865 Cr
-
-=== EXECUTIVE DOSSIER HIGHLIGHTS ===
-• Order Book Scale: HAL benefits from long-cycle mega contracts (Tejas Mk1A, ALH Dhruv)
-  backed by proposed 20% defence capex hike.
-• Valuation Arbitrage: HAL trades at 33.4x P/E with 23.6% ROE and 0.02 D/E ratio,
-  presenting superior risk-adjusted return vs BDL's stretched 77.5x P/E.
-• Geopolitical Catalyst: Recent ₹1,307 Cr Indian Navy missile contract positions BDL
-  as high-beta tactical trade, whereas HAL serves as strategic compounder.
+**Option B: Terminal CLI**
+```bash
+python run_india_finrag.py
 ```
 
 ---
 
-## 🛠️ Tech Stack
-- **Frameworks & Orchestration:** Python, LangChain, Custom Multi-Agent State Machine
-- **LLM Engine:** Google Gemini (Gemini 2.0 / 3.8 Flash via modern `google-genai` SDK)
-- **Vector Storage:** ChromaDB with Sentence-Transformers (`all-MiniLM-L6-v2`)
-- **Financial APIs:** yfinance, feedparser (Google News India RSS)
-- **Web UI:** Streamlit with custom CSS layout
+## Sample Query & Output
+
+**Question:**
+> *"Compare BDL vs HAL on defense orders and recent geopolitical outlook"*
+
+**What the system does:**
+1. Recognizes **HAL.NS** (Hindustan Aeronautics) and **BDL.NS** (Bharat Dynamics).
+2. Grabs latest headlines (e.g. HAL Tejas deliveries, BDL ₹1,307 Cr Navy missile order).
+3. Fetches live market stats (HAL: ~₹4,180, P/E ~33x | BDL: ~₹1,085, P/E ~77x).
+4. Pulls strategy & order backlog disclosures from their annual reports.
+5. Produces a side-by-side breakdown covering valuation, order books, and key risks.
 
 ---
 
-## 📜 License
-MIT License. Created for advanced financial research and AI engineering portfolios.
+## Tech Used
+
+- **Python 3.10+**
+- **LLM:** Google Gemini (`google-genai` SDK)
+- **Vector DB:** ChromaDB
+- **Data & News:** `yfinance`, `feedparser`
+- **UI:** Streamlit & Rich CLI
