@@ -1,53 +1,101 @@
-# FinRag — Indian Stock Market Multi-Agent RAG
+# FinRAG: LangGraph Multi-Agent Equity Intelligence
 
-A multi-agent financial research assistant for Indian equities (NSE & BSE).
-
-Most RAG setups just take a bunch of PDF documents, chop them into chunks, and do vector search. That works okay for static manuals, but for the stock market, looking at an annual report from 8 months ago without knowing what happened in the news yesterday gives you incomplete answers.
-
-FinRag fixes this by combining three things whenever you ask a question:
-1. **Corporate Filings (Annual Reports)** via vector search over parsed PDFs.
-2. **Live Breaking News** pulled in real time from Indian financial news feeds (Reuters, Business Standard, Google News India).
-3. **Real-time Fundamentals** directly from the market (live share prices, P/E ratio, Market Cap, ROE, Debt-to-Equity).
-
-Then, a specialized LLM agent synthesizes everything into a balanced investment brief.
+> An open-source, deterministic financial research platform for Indian equities (NSE & BSE) powered by **LangGraph**, **ChromaDB RAG**, and **Google Gemini**.
 
 ---
 
-## What Can It Do?
+## Why FinRAG? (The Problem with Standard RAG & Raw Chatbots)
 
-- **Compare Indian stocks side-by-side**: 
-  - Compare Defence giants: **HAL vs BDL** (order book, Tejas deliveries, MoD contracts, valuations).
-  - Compare Private & Public Banks: **ICICI Bank vs HDFC Bank vs SBI** (NIMs, NPA health, credit growth).
-  - Compare Conglomerates & Telecom: **Reliance vs Bharti Airtel**, or check **Adani Enterprises** across its energy/infrastructure segments.
-- **Sector-aware context**: It knows whether a company belongs to Defence, Banking, Infrastructure, or Conglomerates, and highlights metrics relevant to that sector.
-- **Zero API Cost**: Powered by Google Gemini's free tier (`gemini-3.8-flash` / `gemini-3.1-flash-lite`) and local embedding models.
+Most standard RAG setups take a PDF, chop it into chunks, and run cosine similarity search. That works for software manuals, but for the stock market, an annual report from eight months ago without knowing yesterday's breaking news or today's P/E ratio produces dangerously incomplete or hallucinated investment advice.
+
+Similarly, asking a raw frontier LLM (like ChatGPT or raw Gemini) *"What is the better sector between Space and EV?"* results in generic conversational essays with no live stock prices, no actual valuation multiples, and zero deterministic data.
+
+**FinRAG solves this by separating verified ground-truth data from probabilistic reasoning.** Whenever a query enters the system, a stateful LangGraph multi-agent pipeline coordinates:
+1. **Domain Guardrails:** Blocks off-topic queries immediately to prevent hallucinations.
+2. **Deterministic Exchange Ratios:** Queries live NSE/BSE fundamentals (P/E, Market Cap in ₹ Cr, ROE, 1-Year Returns, Debt-to-Equity).
+3. **Live Breaking News:** Ingests real-time financial headlines from Reuters, Business Standard, and Google News India RSS.
+4. **Corporate Filings (Annual Reports):** Vector search across parsed corporate filings.
+5. **Lead Advisory Synthesis:** Constrains the LLM to write an institutional-grade investment memorandum based strictly on verified data.
 
 ---
 
-## Project Structure
+## Architecture: LangGraph State Machine
 
-```text
-FinRAGFinal/
-├── app.py                     # Streamlit web dashboard
-├── run_india_finrag.py        # Terminal CLI with quick presets
-├── requirements.txt           # Python dependencies
-├── data/                      # Annual reports (PDFs) and company mappings
-└── src/
-    └── finrag/
-        ├── models/
-        │   └── gemini_models.py       # Gemini QA and summarizer wrapper
-        ├── scoring/
-        │   ├── news_fetcher.py        # Live RSS & news aggregator
-        │   └── financial_data_fetcher.py # yfinance data collector
-        └── orchestrator/
-            └── india_orchestrator.py  # Entity detection and multi-source synthesis
+FinRAG is built on official **LangGraph** (`from langgraph.graph import StateGraph, START, END`). Every user inquiry flows through the state graph below:
+
+```mermaid
+flowchart TD
+    __start__([START: User Query]) --> guardrail_node[Node 0: Domain Guardrail Node]
+    
+    guardrail_node -->|Out of Domain| out_of_domain_node[Out-of-Domain Filter Node]
+    guardrail_node -->|Authorized Market Query| intent_agent[Node 1: Intent & Taxonomy Agent]
+    
+    out_of_domain_node --> __end_reject__([END: Rejection Notice])
+    
+    intent_agent -->|Sector / Thematic Query| sector_agent[Node 2: Sector Research Agent]
+    intent_agent -->|Direct Stock Tickers| quant_engine[Node 3: Quantitative Engine]
+    
+    sector_agent --> quant_engine
+    quant_engine --> news_agent[Node 4: Market News & Catalysts Agent]
+    news_agent --> filings_rag[Node 5: Filings Vector RAG Agent]
+    filings_rag --> context_builder[Node 6: Context Normalization Node]
+    context_builder --> synthesis_agent[Node 7: Lead Advisory Synthesis Agent]
+    synthesis_agent --> __end__([END: Institutional Advisory Memo])
+    
+    style __start__ fill:#0F172A,stroke:#38BDF8,stroke-width:2px,color:#fff
+    style __end__ fill:#0F172A,stroke:#22C55E,stroke-width:2px,color:#fff
+    style __end_reject__ fill:#450A0A,stroke:#EF4444,stroke-width:2px,color:#fff
+    style guardrail_node fill:#1E1B4B,stroke:#818CF8,stroke-width:2px,color:#fff
+    style out_of_domain_node fill:#7F1D1D,stroke:#F87171,color:#fff
+    style intent_agent fill:#1E293B,stroke:#94A3B8,color:#fff
+    style sector_agent fill:#1E3A8A,stroke:#60A5FA,color:#fff
+    style quant_engine fill:#064E3B,stroke:#34D399,color:#fff
+    style news_agent fill:#701A75,stroke:#F472B6,color:#fff
+    style filings_rag fill:#78350F,stroke:#FBBF24,color:#fff
+    style context_builder fill:#312E81,stroke:#818CF8,color:#fff
+    style synthesis_agent fill:#831843,stroke:#F43F5E,color:#fff
+```
+
+### The Agent Nodes in Detail
+
+- **`guardrail_node` (First Line of Defense):** Checks if the query belongs to financial markets, investing, equities, or business analysis. If someone asks a random question (e.g. *"did you do web scraping to fetch data ?"* or *"write me a poem"*), the graph halts at Node 0 and politely informs the user that its field of expertise is strictly stock and financial market analysis.
+- **`intent_agent`:** Parses stock symbols, handles Indian exchange naming quirks (NSE/BSE tickers), and decides whether the query is a single-stock deep-dive or a multi-sector comparison.
+- **`sector_agent`:** Automatically expands broad thematic questions (like *"Space vs EV"* or *"Best renewable energy stocks"*) into representative peer baskets of actual listed companies (e.g. Space $\rightarrow$ MTAR Technologies, HAL, Data Patterns; EV $\rightarrow$ M&M, Olectra, Exide Industries, Tata Power).
+- **`quant_engine`:** Ingests live exchange ratios (Current Price, Market Cap, Trailing P/E, ROE %, Revenue Growth, 1-Year Price Return, Debt/Equity).
+- **`news_agent`:** Aggregates real-time financial news headlines and government policy updates (e.g. PLI schemes, export orders, subsidy packages).
+- **`filings_rag`:** Semantic vector similarity search over parsed corporate annual reports (currently includes HAL, BDL, L&T, and Reliance Power).
+- **`synthesis_agent`:** Feeds only verified tabular metrics and news into Gemini to draft a structured institutional equity research advisory memo.
+
+---
+
+## User Interfaces
+
+### 1. Web Dashboard (Streamlit)
+Includes:
+- **Interactive LangGraph Architecture Expander:** Visualizes the active StateGraph and node transitions.
+- **Audit Trail & Trace:** Real-time log showing each agent step, execution runtime in seconds, and tools fired.
+- **Tabbed Advisory Workspace:**
+  1. *📑 Institutional Advisory Memo:* Executive stance (Buy/Hold/Overweight), catalyst breakdown, and downside risk triggers.
+  2. *📊 Valuation & Fundamentals Matrix:* Interactive DataFrame and key metric highlight cards.
+  3. *📰 Breaking News & Catalyst Feed:* Clickable live headlines with dates and publisher tags.
+  4. *🔬 LangGraph State Inspection:* Real-time JSON state verification.
+
+```bash
+streamlit run app.py
+```
+
+### 2. Terminal CLI (Bloomberg-Style Terminal)
+A sleek, command-line interface with rich tables, agent audit progress bars, and markdown advisory dossiers:
+
+```bash
+python run_india_finrag.py
 ```
 
 ---
 
-## Getting Started
+## Quickstart
 
-### 1. Clone & Install
+### 1. Clone & Install Dependencies
 
 ```bash
 git clone https://github.com/kawaiibaka0908/FinRag.git
@@ -55,50 +103,58 @@ cd FinRag
 pip install -r requirements.txt
 ```
 
-### 2. Set Up Your API Key
+### 2. Set Up Free Gemini API Key
 
-Get a free Gemini API key from [Google AI Studio](https://aistudio.google.com/):
+FinRAG runs entirely on Google's free-tier Gemini API (`gemini-3.5-flash-lite`, `gemini-3.8-flash`) with automatic fallback chains. No OpenAI or paid API key is required.
 
 ```bash
-# On Windows (PowerShell):
+# Windows PowerShell
 $env:GEMINI_API_KEY="your_api_key_here"
 
-# On Linux / Mac:
+# Linux / macOS
 export GEMINI_API_KEY="your_api_key_here"
 ```
 
-### 3. Run It
+### 3. Launch
 
-**Option A: Web App (Streamlit)**
 ```bash
+# Launch Web App
 streamlit run app.py
-```
 
-**Option B: Terminal CLI**
-```bash
+# Or Launch Terminal CLI
 python run_india_finrag.py
 ```
 
 ---
 
-## Sample Query & Output
+## Project Structure
 
-**Question:**
-> *"Compare BDL vs HAL on defense orders and recent geopolitical outlook"*
-
-**What the system does:**
-1. Recognizes **HAL.NS** (Hindustan Aeronautics) and **BDL.NS** (Bharat Dynamics).
-2. Grabs latest headlines (e.g. HAL Tejas deliveries, BDL ₹1,307 Cr Navy missile order).
-3. Fetches live market stats (HAL: ~₹4,180, P/E ~33x | BDL: ~₹1,085, P/E ~77x).
-4. Pulls strategy & order backlog disclosures from their annual reports.
-5. Produces a side-by-side breakdown covering valuation, order books, and key risks.
+```text
+FinRag/
+├── app.py                                # Streamlit institutional web dashboard
+├── run_india_finrag.py                   # Rich terminal CLI
+├── requirements.txt                      # Dependencies (langgraph, streamlit, yfinance, google-genai, etc.)
+├── data/                                 # Annual reports (PDFs) and ticker mappings
+└── src/
+    └── finrag/
+        ├── orchestrator/
+        │   ├── langgraph_orchestrator.py # Official LangGraph StateGraph engine with Guardrail
+        │   └── india_orchestrator.py     # Pure-Python multi-agent orchestrator & sector agent
+        ├── models/
+        │   └── gemini_models.py          # Google Gemini model wrappers with auto-fallback chain
+        ├── scoring/
+        │   ├── news_fetcher.py           # Live RSS & Google News India feed aggregator
+        │   └── financial_data_fetcher.py # Real-time NSE/BSE quant data collector (yfinance)
+        └── vectorstore/                  # ChromaDB vector store for annual report RAG
+```
 
 ---
 
-## Tech Used
+## Tech Stack
 
-- **Python 3.10+**
-- **LLM:** Google Gemini (`google-genai` SDK)
-- **Vector DB:** ChromaDB
-- **Data & News:** `yfinance`, `feedparser`
-- **UI:** Streamlit & Rich CLI
+- **Orchestration:** [LangGraph](https://github.com/langchain-ai/langgraph) (StateGraph, conditional routing)
+- **Language Models:** Google Gemini (`google-genai` SDK v3+, zero-cost API)
+- **Live Market Data:** Yahoo Finance API (`yfinance` for NSE/BSE quotes and ratios)
+- **Live News Ingestion:** `feedparser` over Reuters, Business Standard & Google News India
+- **Vector Search & RAG:** ChromaDB with local sentence embeddings
+- **Frontends:** Streamlit (Web) & Rich (Terminal CLI)
