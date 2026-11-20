@@ -104,6 +104,30 @@ SECTOR_MAP = {
 }
 
 
+FINANCIAL_TERMS = {
+    # Markets & Exchanges
+    "stock", "stocks", "share", "shares", "equity", "equities", "market", "markets",
+    "bse", "nse", "nifty", "sensex", "indices", "index", "bull", "bear",
+    
+    # Valuation & Metrics
+    "pe", "p/e", "valuation", "valuations", "market cap", "marketcap", "mcap",
+    "roe", "roce", "ebitda", "pat", "eps", "dividend", "yield", "margin", "margins",
+    "debt", "leverage", "cash flow", "balance sheet", "income statement",
+    "revenue", "profit", "loss", "growth", "earnings", "guidance", "order book",
+    
+    # Corporate Actions & Filings
+    "annual report", "filing", "filings", "10-k", "quarterly", "results",
+    "q1", "q2", "q3", "q4", "fy24", "fy25", "fy26", "concall", "transcripts",
+    "ipo", "demerger", "merger", "acquisition", "bonus", "split", "promoter",
+    
+    # Investment & Sectors
+    "invest", "investment", "investing", "buy", "sell", "hold", "target price",
+    "portfolio", "outperform", "underperform", "multibagger", "risk", "hedging",
+    "sector", "sectors", "industry", "industries", "thematic", "peers", "peer",
+    "capex", "monetary policy", "rbi", "repo rate", "inflation", "gdp", "fmcg",
+    "defence", "defense", "banking", "pharma", "infra", "renewable", "solar", "telecom"
+}
+
 class SectorResearchAgent:
     """Specialized Agent node for thematic, multi-sector, and macro inquiries."""
 
@@ -267,6 +291,59 @@ class IndiaMultiAgentOrchestrator:
         trace = []
         start_time = time.time()
         
+        # Step 0: Domain Guardrail Verification
+        q_strip = query.strip()
+        q_lower = q_strip.lower()
+        q_upper = q_strip.upper()
+
+        has_ticker = any(re.search(r'\b' + re.escape(k) + r'\b', q_upper) or v["name"].upper() in q_upper for k, v in STOCKS.items())
+        has_sector = any(re.search(r'\b' + re.escape(s) + r'\b', q_lower) for s in SECTOR_MAP.keys())
+        has_term = any(re.search(r'\b' + re.escape(t) + r'\b', q_lower) for t in FINANCIAL_TERMS)
+        is_domain = has_ticker or has_sector or has_term
+
+        if not is_domain and len(q_strip.split()) > 2 and self.qa.client:
+            try:
+                check_prompt = (
+                    "Is the following user input asking about financial markets, investing, stocks, companies, "
+                    "business performance, economic sectors, or corporate filings? "
+                    "Reply strictly with only YES or NO.\n\n"
+                    f"User Query: {q_strip}"
+                )
+                res = self.qa.client.models.generate_content(
+                    model="gemini-3.5-flash-lite",
+                    contents=check_prompt
+                )
+                if res and res.text and "YES" in res.text.upper():
+                    is_domain = True
+            except Exception:
+                pass
+
+        trace.append({
+            "step": 0,
+            "agent": "Domain Guardrail Agent",
+            "action": "Context & Domain Relevance Verification",
+            "detail": f"Evaluation Result: {'IN-DOMAIN (Authorized)' if is_domain else 'OUT-OF-DOMAIN (Rejected)'}"
+        })
+
+        if not is_domain:
+            msg = (
+                "⚠️ **This query is out of context.**\n\n"
+                "My field of expertise is **Indian stock and financial market analysis** "
+                "(NSE & BSE equities, sectoral research, valuation multiples, corporate filings, and macro financial trends).\n\n"
+                "Please ask an investment, company, or market-related question (e.g. *'Compare HAL vs BDL'*, "
+                "*'What is the better sector between Space and EV?'*, or *'Evaluate Reliance and Adani capex'*)."
+            )
+            return {
+                "query": query,
+                "entities": [],
+                "answer": msg,
+                "confidence": 0.0,
+                "fundamentals": [],
+                "news": [],
+                "trace": trace,
+                "elapsed_seconds": round(time.time() - start_time, 2)
+            }
+
         # Step 1: Query Intent & Entity Resolution
         targets = self.find_tickers(query)
         is_sector = self._is_sector_query(query)
