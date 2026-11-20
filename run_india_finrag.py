@@ -5,7 +5,7 @@ from pathlib import Path
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir / "src"))
 
-from finrag.orchestrator.india_orchestrator import IndiaMultiAgentOrchestrator
+from finrag.orchestrator.langgraph_orchestrator import FinRAGLangGraphOrchestrator
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -25,26 +25,26 @@ SUGGESTED_THEMES = [
 def print_banner():
     banner = """[bold cyan]
 ╔════════════════════════════════════════════════════════════════════════════════╗
-║    🏛️  FINRAG INSTITUTIONAL: MULTI-AGENT EQUITY INTELLIGENCE TERMINAL          ║
-║         NSE & BSE Equities | Deterministic RAG + Live Multi-Agent Feeds        ║
+║    🏛️  FINRAG INSTITUTIONAL: LANGGRAPH EQUITY INTELLIGENCE TERMINAL            ║
+║         Stateful Multi-Agent Graph (NSE/BSE) | RAG + Tool-Calling Workflows    ║
 ╚════════════════════════════════════════════════════════════════════════════════╝
 [/bold cyan]
-[green]● Active Agents:[/green] Intent Agent | Sector Research Agent | Quant Engine | News & Sentiment Agent | Filings RAG
+[green]● LangGraph Graph:[/green] Intent Node ──► Sector Node ──► Quant Engine ──► News Node ──► Filings RAG ──► Synthesis Node
 [green]● Real-Time Feeds:[/green] Live NSE/BSE Exchange Quotes | Reuters / Google News India RSS
 [green]● Corporate Filings:[/green] Integrated Annual Reports (HAL, BDL, L&T, Reliance Power)
     """
     console.print(banner)
 
 def display_results(result):
-    console.print(f"\n[bold green]⚡ Analysis Completed in {result.get('elapsed_seconds', 'N/A')} seconds across 5 Agent nodes[/bold green]\n")
+    console.print(f"\n[bold green]⚡ LangGraph Workflow Completed in {result.get('elapsed_seconds', 'N/A')} seconds[/bold green]\n")
 
-    # 1. Multi-Agent Execution Trace Table
+    # 1. LangGraph State Node Trace Table
     if result.get("trace"):
-        trace_table = Table(title="🔍 Multi-Agent Execution Graph & Audit Trail", header_style="bold cyan")
-        trace_table.add_column("Step", style="dim", width=6)
-        trace_table.add_column("Agent Node", style="bold yellow")
-        trace_table.add_column("Action Taken", style="white")
-        trace_table.add_column("Details", style="dim white")
+        trace_table = Table(title="🕸️ LangGraph Node-by-Node State Execution Audit Trail", header_style="bold cyan")
+        trace_table.add_column("Node", style="dim", width=6)
+        trace_table.add_column("Agent / Tool", style="bold yellow")
+        trace_table.add_column("State Action", style="white")
+        trace_table.add_column("Output Details", style="dim white")
 
         for t in result["trace"]:
             trace_table.add_row(str(t["step"]), t["agent"], t["action"], t["detail"])
@@ -91,14 +91,14 @@ def display_results(result):
     # 4. Institutional Advisory Dossier
     console.print(Panel(
         Markdown(result.get("answer", "")),
-        title="📑 Institutional Equity Research Dossier",
+        title="📑 Institutional Equity Research Dossier (LangGraph Output)",
         border_style="bold blue",
         expand=False
     ))
 
 def main():
     print_banner()
-    orchestrator = IndiaMultiAgentOrchestrator()
+    orchestrator = FinRAGLangGraphOrchestrator()
 
     while True:
         console.print("[bold white]Type your investment query, sector comparison, or 'examples' (or 'q' to quit):[/bold white]")
@@ -118,15 +118,15 @@ def main():
             console.print("\n")
             continue
 
-        console.print(f"\n[bold green]Dispatching Multi-Agent Pipeline for:[/bold green] '{user_input}'...")
+        console.print(f"\n[bold green]Executing LangGraph State Machine for:[/bold green] '{user_input}'...")
         
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             transient=True
         ) as progress:
-            task = progress.add_task("[bold cyan]Coordinating agents, querying exchange APIs, and synthesizing memo...", total=None)
-            result = orchestrator.run_comparative_analysis(user_input)
+            task = progress.add_task("[bold cyan]Navigating graph nodes, extracting market ratios, synthesizing...", total=None)
+            result = orchestrator.run(user_input)
 
         display_results(result)
         console.print("\n" + "="*80 + "\n")

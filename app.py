@@ -7,7 +7,7 @@ import pandas as pd
 
 # Page config
 st.set_page_config(
-    page_title="FinRAG Institutional | Multi-Agent Financial Intelligence",
+    page_title="FinRAG Institutional | LangGraph Multi-Agent Architecture",
     page_icon="🏛️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -16,11 +16,11 @@ st.set_page_config(
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir / "src"))
 
-from finrag.orchestrator.india_orchestrator import IndiaMultiAgentOrchestrator
+from finrag.orchestrator.langgraph_orchestrator import FinRAGLangGraphOrchestrator
 
 @st.cache_resource
 def get_orchestrator():
-    return IndiaMultiAgentOrchestrator()
+    return FinRAGLangGraphOrchestrator()
 
 orchestrator = get_orchestrator()
 
@@ -38,16 +38,6 @@ st.markdown("""
         font-size: 1.05rem;
         color: #475569;
         margin-bottom: 25px;
-    }
-    .agent-pill {
-        display: inline-block;
-        padding: 4px 10px;
-        margin: 2px;
-        border-radius: 6px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        background-color: #EEF2F6;
-        color: #1E293B;
     }
     .trace-card {
         background-color: #F8FAFC;
@@ -68,33 +58,39 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Header
-st.markdown('<div class="main-header">🏛️ FinRAG Institutional: Multi-Agent Equity Intelligence</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Deterministic Financial RAG & Multi-Agent Advisory Architecture for NSE & BSE Equities</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">🏛️ FinRAG: LangGraph Multi-Agent Financial Architecture</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Stateful Directed Multi-Agent Graph for NSE & BSE Equities (LangGraph + Deterministic Market Feeds + RAG)</div>', unsafe_allow_html=True)
 
-# Sidebar: System Architecture & Disclosures
+# Sidebar: System Architecture & LangGraph Graph
 with st.sidebar:
-    st.markdown("### ⚙️ Multi-Agent Architecture")
+    st.markdown("### 🕸️ LangGraph State Machine")
     st.markdown("""
-    **Active Specialized Agents:**
-    - 🎯 **Intent & Taxonomy Agent** (Query semantic parser)
-    - 🌐 **Sector Research Agent** (Dynamic peer basket builder)
-    - 📊 **Quantitative Engine** (Live NSE/BSE fundamentals)
-    - 📰 **Market News & Catalyst Agent** (Live RSS aggregator)
-    - 📑 **Filings RAG Agent** (Audited annual reports retriever)
-    - 🧠 **Lead Advisory Synthesis Agent** (Constrained reasoning)
+    **Compiled Graph Nodes:**
+    - `START` ──► `intent_agent`
+    - `intent_agent` ──► (Conditional Branch)
+      - ──► `sector_agent`
+      - ──► `quant_engine`
+    - `quant_engine` ──► `news_agent`
+    - `news_agent` ──► `filings_rag`
+    - `filings_rag` ──► `context_builder`
+    - `context_builder` ──► `synthesis_agent` ──► `END`
     """)
     st.markdown("---")
-    st.markdown("### 📡 Data Feeds & Filings")
+    st.markdown("### 📡 Live Feed Status")
     st.markdown("""
+    - **LangGraph Version:** Active
     - **Filings Ingested:** HAL, BDL, L&T, Reliance Power
-    - **Market Data:** Live NSE & BSE Exchange Feed
-    - **Breaking News:** Reuters, Business Standard, Yahoo Finance
-    - **Language Kernel:** Google Gemini (Zero-Cost Free Tier)
+    - **Market Data:** Live NSE & BSE Exchange API
+    - **Language Model:** Google Gemini (Zero-Cost Free Tier)
     """)
     st.markdown("---")
     st.caption("🔒 Architecture separates ground-truth data extraction from probabilistic reasoning to eliminate financial hallucinations.")
 
-# Quick Advisory Themes (Chips instead of clunky 1-8 dropdown!)
+# LangGraph Architecture Diagram Expander
+with st.expander("📊 **View Active LangGraph StateGraph Architecture (Mermaid Graph)**", expanded=False):
+    st.markdown("```mermaid\n" + orchestrator.get_mermaid_graph() + "\n```")
+
+# Quick Advisory Themes
 st.markdown("##### 💡 Advisory Quick Themes")
 col1, col2, col3, col4, col5 = st.columns(5)
 
@@ -123,31 +119,32 @@ user_query = st.text_area(
     height=85
 )
 
-run_analysis = st.button("⚡ Execute Multi-Agent Advisory Pipeline", type="primary", use_container_width=True)
+run_analysis = st.button("⚡ Execute LangGraph Workflow", type="primary", use_container_width=True)
 
 if run_analysis and user_query:
-    # Visual Progress & Trace
-    with st.status("🔄 **Multi-Agent Pipeline In Progress...**", expanded=True) as status_box:
-        st.write("🎯 **Step 1:** Intent Agent parsing semantic query & resolving listed peers...")
+    with st.status("🔄 **LangGraph Workflow Executing Across Nodes...**", expanded=True) as status_box:
+        st.write("🎯 **Node 1 (intent_agent):** Semantic classification & conditional edge evaluation...")
         time.sleep(0.3)
-        st.write("📊 **Step 2:** Quantitative Engine querying live NSE/BSE fundamentals & valuation ratios...")
+        st.write("🌐 **Node 2 (sector_agent):** Thematic peer basket enumeration...")
         time.sleep(0.3)
-        st.write("📰 **Step 3:** Market News Agent ingesting breaking regulatory & industry headlines...")
+        st.write("📊 **Node 3 (quant_engine):** Querying real-time exchange ratios via Yahoo Finance API...")
         time.sleep(0.3)
-        st.write("📑 **Step 4:** Filings RAG Agent cross-referencing audited annual report disclosures...")
+        st.write("📰 **Node 4 (news_agent):** Ingesting breaking regulatory & market RSS feeds...")
         time.sleep(0.3)
-        st.write("🧠 **Step 5:** Lead Advisory Synthesis Agent compiling grounded institutional memo...")
-        
-        result = orchestrator.run_comparative_analysis(user_query)
-        status_box.update(label=f"✅ **Multi-Agent Pipeline Execution Completed in {result.get('elapsed_seconds', 'N/A')}s**", state="complete", expanded=False)
+        st.write("📑 **Node 5 (filings_rag):** Vector search over corporate filings index...")
+        time.sleep(0.3)
+        st.write("🧠 **Node 6 (synthesis_agent):** Grounded institutional memo generation with Gemini...")
+
+        result = orchestrator.run(user_query)
+        status_box.update(label=f"✅ **LangGraph Completed Successfully in {result.get('elapsed_seconds', 'N/A')}s**", state="complete", expanded=False)
 
     # 1. Multi-Agent Execution Trace Expander
-    with st.expander("🔍 **View Multi-Agent Execution Graph & Tool Calls (Audit Trail)**", expanded=False):
-        st.markdown(f"**Total Distributed Tools Fired:** 5 | **Runtime:** `{result.get('elapsed_seconds', 'N/A')}s`")
+    with st.expander("🔍 **View LangGraph Execution Audit Trail (Node-by-Node State Output)**", expanded=False):
+        st.markdown(f"**Total Graph Nodes Fired:** {len(result.get('trace', []))} | **Runtime:** `{result.get('elapsed_seconds', 'N/A')}s`")
         for t in result.get("trace", []):
             st.markdown(f"""
             <div class="trace-card">
-                <span class="metric-badge">Step {t['step']}</span> <strong>{t['agent']}</strong> — <em>{t['action']}</em><br>
+                <span class="metric-badge">Node {t['step']}</span> <strong>{t['agent']}</strong> — <em>{t['action']}</em><br>
                 <small style="color: #475569;">{t['detail']}</small>
             </div>
             """, unsafe_allow_html=True)
@@ -157,7 +154,7 @@ if run_analysis and user_query:
         "📑 Institutional Advisory Memo", 
         "📊 Valuation & Fundamentals Matrix", 
         "📰 Breaking News & Catalyst Feed", 
-        "🔬 Ground-Truth Context Inspection"
+        "🔬 LangGraph State Inspection"
     ])
 
     with tab_memo:
@@ -167,16 +164,16 @@ if run_analysis and user_query:
         fundamentals = result.get("fundamentals", [])
         if fundamentals:
             df = pd.DataFrame(fundamentals)
-            # rename for institutional display
             rename_map = {
                 "ticker": "Ticker", "name": "Company Name", "sector": "Sector",
                 "price": "Live Price (₹)", "pe": "P/E Ratio", "mcap": "Market Cap",
-                "roe": "ROE", "rev_growth": "Revenue Growth", "yr_return": "1Y Price Return"
+                "roe": "ROE", "rev_growth": "Revenue Growth", "yr_return": "1Y Price Return",
+                "debt_equity": "Debt/Equity", "margin": "Profit Margin"
             }
             display_df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
             st.dataframe(display_df, use_container_width=True, hide_index=True)
             
-            st.markdown("#### Live Metric Highlights")
+            st.markdown("#### Live Valuation Metrics")
             cols = st.columns(min(len(fundamentals), 4))
             for i, item in enumerate(fundamentals[:4]):
                 with cols[i]:
@@ -191,7 +188,7 @@ if run_analysis and user_query:
     with tab_news:
         news_items = result.get("news", [])
         if news_items:
-            st.markdown(f"**Aggregated {len(news_items)} Live Headlines Ingested by the News Agent:**")
+            st.markdown(f"**Aggregated {len(news_items)} Live Headlines Ingested by the LangGraph News Node:**")
             for item in news_items:
                 source = item.get("source", "Financial News")
                 date = item.get("published", "")
@@ -201,11 +198,11 @@ if run_analysis and user_query:
             st.info("No real-time news headlines were retrieved for this specific query.")
 
     with tab_debug:
-        st.markdown("**Entities & Peer Baskets Resolved:**")
+        st.markdown("**LangGraph State - Resolved Entities:**")
         st.json([e.get("name") for e in result.get("entities", [])])
         st.markdown("**Model Output Confidence:**")
         st.progress(float(result.get("confidence", 0.95)))
-        st.caption("Grounded against real-time verified data feeds. Zero probabilistic hallucination on valuation multiples.")
+        st.caption("State machine strictly validated against deterministic tools. Zero probabilistic hallucination on valuation ratios.")
 
 st.markdown("---")
-st.caption("🏛️ FinRAG Institutional Equity Platform | Built with Python, Google Gemini, Yahoo Finance API & RAPTOR Vector RAG")
+st.caption("🏛️ FinRAG Institutional Equity Platform | Powered by LangGraph StateGraph, Google Gemini, Yahoo Finance API & RAPTOR Vector Store")
